@@ -67,6 +67,11 @@ const deleteProduct = async (id) => {
     await tx.orderItem.deleteMany({
       where: { productId: id }
     });
+
+    // Delete related referral orders
+    await tx.referralOrder.deleteMany({
+      where: { productId: id }
+    });
     
     // Delete the product
     return await tx.product.delete({
