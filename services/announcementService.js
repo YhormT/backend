@@ -15,7 +15,7 @@ class AnnouncementService {
           { target: 'all' }
         ];
       }
-      
+
       const announcements = await prisma.announcement.findMany({
         where: whereClause,
         orderBy: [
