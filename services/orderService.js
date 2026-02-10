@@ -311,30 +311,35 @@ const getOrderStatus = async (options = {}) => {
 
   // Calculate pagination
   const skip = (page - 1) * limit;
-  
-  // Get total count for pagination
+
   const totalCount = await prisma.order.count({ where });
   
-  // Get status counts for all orders (ignoring current filters for accurate totals)
-  const allOrderItems = await prisma.orderItem.groupBy({
-    by: ['status'],
-    _count: { status: true }
-  });
-  
-  const statusCounts = {
-    pending: 0,
-    processing: 0,
-    completed: 0,
-    cancelled: 0
-  };
-  
-  allOrderItems.forEach(item => {
-    const status = item.status?.toLowerCase();
-    if (status === 'pending') statusCounts.pending = item._count.status;
-    else if (status === 'processing') statusCounts.processing = item._count.status;
-    else if (status === 'completed') statusCounts.completed = item._count.status;
-    else if (status === 'cancelled' || status === 'canceled') statusCounts.cancelled = item._count.status;
-  });
+  // Get status counts - cached for 30 seconds to reduce DB load
+  const statusCacheKey = 'order_status_counts';
+  let statusCounts = cache.get(statusCacheKey);
+  if (!statusCounts) {
+    const allOrderItems = await prisma.orderItem.groupBy({
+      by: ['status'],
+      _count: { status: true }
+    });
+    
+    statusCounts = {
+      pending: 0,
+      processing: 0,
+      completed: 0,
+      cancelled: 0
+    };
+    
+    allOrderItems.forEach(item => {
+      const status = item.status?.toLowerCase();
+      if (status === 'pending') statusCounts.pending = item._count.status;
+      else if (status === 'processing') statusCounts.processing = item._count.status;
+      else if (status === 'completed') statusCounts.completed = item._count.status;
+      else if (status === 'cancelled' || status === 'canceled') statusCounts.cancelled = item._count.status;
+    });
+    
+    cache.set(statusCacheKey, statusCounts, 30000); // 30 second cache
+  }
   
   // Determine sort order
   const orderBy = sortOrder === 'newest' 
@@ -463,7 +468,8 @@ const getOrderHistory = async (userId) => {
         include: { product: true }
       }
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    take: 50
   });
 };
 

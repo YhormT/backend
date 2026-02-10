@@ -626,24 +626,46 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
-    console.log(`🔍 [GET ORDER] Looking up order ${orderId}...`);
+    const prisma = require('../config/db');
     
-    // Get all orders and filter by orderId (using existing getOrderStatus function)
-    const allOrdersResult = await getOrderStatus();
-    const allOrders = allOrdersResult.data || [];
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(orderId) },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, description: true, price: true }
+            }
+          }
+        },
+        user: {
+          select: { id: true, name: true, email: true, phone: true }
+        }
+      }
+    });
     
-    // Find orders that match the requested order ID
-    const matchingOrders = allOrders.filter(item => item.orderId == orderId);
-    
-    if (matchingOrders.length === 0) {
-      console.log(`❌ [GET ORDER] Order ${orderId} not found`);
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: `Order ${orderId} not found`
       });
     }
 
-    console.log(`✅ [GET ORDER] Found ${matchingOrders.length} items for order ${orderId}`);
+    // Transform to match expected format
+    const matchingOrders = order.items.map(item => ({
+      id: item.id,
+      orderId: order.id,
+      productId: item.productId,
+      quantity: item.quantity,
+      mobileNumber: item.mobileNumber || order.mobileNumber,
+      user: order.user,
+      product: item.product,
+      order: {
+        id: order.id,
+        createdAt: order.createdAt,
+        items: [{ status: item.status }]
+      }
+    }));
     
     res.json({
       success: true,
@@ -652,7 +674,7 @@ exports.getOrderById = async (req, res) => {
       itemCount: matchingOrders.length
     });
   } catch (error) {
-    console.error(`❌ [GET ORDER] Error fetching order ${req.params.orderId}:`, error);
+    console.error(`[GET ORDER] Error fetching order ${req.params.orderId}:`, error);
     res.status(500).json({
       success: false,
       message: error.message
