@@ -43,22 +43,38 @@ const getUserCart = async (userId) => {
   });
 };
 
-const removeItemFromCart = async (cartItemId) => {
-  // Get cart item details before deletion
-  const cartItem = await prisma.cartItem.findUnique({
-    where: { id: cartItemId },
-    include: {
-      cart: true,
-      product: true
+const removeItemFromCart = async (cartItemId, retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Get cart item details before deletion
+      const cartItem = await prisma.cartItem.findUnique({
+        where: { id: cartItemId },
+        include: {
+          cart: true,
+          product: true
+        }
+      });
+      
+      if (!cartItem) throw new Error("Cart item not found");
+      
+      // Delete the cart item
+      const deletedItem = await prisma.cartItem.delete({ where: { id: cartItemId } });
+      
+      return deletedItem;
+    } catch (error) {
+      // P2025 = record not found (already deleted by submitCart)
+      if (error.code === 'P2025') {
+        return { id: cartItemId, deleted: true };
+      }
+      // Deadlock detected - retry after short delay
+      const isDeadlock = error.message?.includes('deadlock') || error.code === 'P2034';
+      if (isDeadlock && attempt < retries) {
+        await new Promise(r => setTimeout(r, 100 * attempt));
+        continue;
+      }
+      throw error;
     }
-  });
-  
-  if (!cartItem) throw new Error("Cart item not found");
-  
-  // Delete the cart item
-  const deletedItem = await prisma.cartItem.delete({ where: { id: cartItemId } });
-  
-  return deletedItem;
+  }
 };
 
 
@@ -71,21 +87,31 @@ const getAllCarts = async () => {
   });
 };
 
-const clearUserCart = async (userId) => {
-  const cart = await prisma.cart.findUnique({
-    where: { userId },
-  });
+const clearUserCart = async (userId, retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const cart = await prisma.cart.findUnique({
+        where: { userId },
+      });
 
-  if (!cart) {
-    // If there's no cart, there's nothing to clear.
-    return { message: "Cart is already empty." };
+      if (!cart) {
+        return { message: "Cart is already empty." };
+      }
+
+      await prisma.cartItem.deleteMany({
+        where: { cartId: cart.id },
+      });
+
+      return { message: "Cart cleared successfully." };
+    } catch (error) {
+      const isDeadlock = error.message?.includes('deadlock') || error.code === 'P2034';
+      if (isDeadlock && attempt < retries) {
+        await new Promise(r => setTimeout(r, 100 * attempt));
+        continue;
+      }
+      throw error;
+    }
   }
-
-  await prisma.cartItem.deleteMany({
-    where: { cartId: cart.id },
-  });
-
-  return { message: "Cart cleared successfully." };
 };
 
 module.exports = { addItemToCart, getUserCart, removeItemFromCart, getAllCarts, clearUserCart };

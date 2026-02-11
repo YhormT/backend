@@ -4,7 +4,22 @@ const cache = require("../utils/cache");
 const { createTransaction } = require("./transactionService");
 const userService = require("./userService");
 
-const submitCart = async (userId, mobileNumber = null) => {
+const submitCart = async (userId, mobileNumber = null, retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await submitCartInner(userId, mobileNumber);
+    } catch (error) {
+      const isDeadlock = error.message?.includes('deadlock') || error.code === 'P2034';
+      if (isDeadlock && attempt < retries) {
+        await new Promise(r => setTimeout(r, 200 * attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+};
+
+const submitCartInner = async (userId, mobileNumber = null) => {
   // Use a transaction to ensure atomicity
   return await prisma.$transaction(async (tx) => {
     const cart = await tx.cart.findUnique({
@@ -71,6 +86,9 @@ const submitCart = async (userId, mobileNumber = null) => {
     await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
     return order;
+  }, {
+    timeout: 15000,
+    maxWait: 10000,
   });
 };
 
