@@ -25,6 +25,12 @@ class ComplaintController {
       
       console.log('Complaint created successfully:', complaint);
       
+      // Emit real-time notification to admin
+      try {
+        const { io } = require('../index');
+        io.emit('new-complaint', { complaintId: complaint.id, mobileNumber: complaint.mobileNumber });
+      } catch (e) { /* socket emit is best-effort */ }
+
       res.status(201).json({
         success: true,
         data: complaint,

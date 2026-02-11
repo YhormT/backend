@@ -1,5 +1,5 @@
 {
-  "name": "dex_hub_backend",
+  "name": "kelishub-backend",
   "version": "1.0.0",
   "description": "Kelishub Data Package Backend",
   "main": "index.js",
