@@ -562,6 +562,113 @@ const updateSingleOrderItemStatus = async (itemId, newStatus) => {
       };
     }, { timeout: 15000 });
   } catch (error) {
+    console.error("Error updating single order item status:", error);
+    throw new Error("Failed to update order item status");
+  }
+};
+
+const updateOrderItemsStatus = async (orderId, newStatus) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ 
+        where: { id: parseInt(orderId) }, 
+        select: { userId: true } 
+      });
+      
+      if (!order) {
+        throw new Error("Order not found");
+      }
+      
+      // If status is cancelled/canceled, handle refund logic
+      if (["Cancelled", "Canceled"].includes(newStatus)) {
+        const refundReference = `order_items_refund:${orderId}`;
+        
+        const existingRefund = await tx.transaction.findFirst({
+          where: {
+            userId: order.userId,
+            type: "ORDER_ITEMS_REFUND",
+            reference: refundReference
+          }
+        });
+        
+        if (!existingRefund) {
+          // Calculate total order amount
+          const items = await tx.orderItem.findMany({
+            where: { orderId: parseInt(orderId) },
+            include: { product: true }
+          });
+          
+          let totalOrderAmount = 0;
+          for (const item of items) {
+            totalOrderAmount += item.product.price * item.quantity;
+          }
+          
+          // Find the original order transaction to get the amount that was deducted
+          const originalOrderTransaction = await tx.transaction.findFirst({
+            where: {
+              userId: order.userId,
+              type: "ORDER",
+              reference: `order:${orderId}`,
+              amount: { lt: 0 } // Negative amount (deduction)
+            }
+          });
+          
+          let refundAmount = totalOrderAmount;
+          
+          if (originalOrderTransaction) {
+            refundAmount = Math.abs(originalOrderTransaction.amount);
+          }
+          
+          if (refundAmount > 0) {
+            // Process the refund
+            await createTransaction(
+              order.userId,
+              refundAmount,
+              "ORDER_ITEMS_REFUND",
+              `All items in order #${orderId} refunded (Amount: ${refundAmount})`,
+              refundReference,
+              tx
+            );
+          }
+        } else {
+          console.log(`Refund already processed for order ${orderId}. Skipping duplicate refund.`);
+        }
+      }
+      
+      // Update order items status
+      const updatedItems = await tx.orderItem.updateMany({ 
+        where: { orderId: parseInt(orderId) }, 
+        data: { status: newStatus } 
+      });
+      
+      // Create status change transaction (only if not a duplicate)
+      const statusChangeReference = `order_status:${orderId}:${newStatus}`;
+      const existingStatusChange = await tx.transaction.findFirst({
+        where: {
+          userId: order.userId,
+          type: "ORDER_ITEMS_STATUS",
+          reference: statusChangeReference
+        }
+      });
+      
+      if (!existingStatusChange) {
+        await createTransaction(
+          order.userId, 
+          0, 
+          "ORDER_ITEMS_STATUS", 
+          `All items in order #${orderId} status changed to ${newStatus}`, 
+          statusChangeReference,
+          tx
+        );
+      }
+      
+      return { 
+        success: true, 
+        updatedCount: updatedItems.count, 
+        message: `Successfully updated ${updatedItems.count} order items to ${newStatus}` 
+      };
+    }, { timeout: 15000 });
+  } catch (error) {
     console.error("Error updating order items status:", error);
     throw new Error("Failed to update order items status");
   }
