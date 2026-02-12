@@ -442,7 +442,7 @@ const verifyReferralPayment = async (reference) => {
         });
 
         return { alreadyProcessed: false, order };
-      });
+      }, { timeout: 15000 });
 
       return {
         success: true,
@@ -621,7 +621,7 @@ const markCommissionsPaid = async (agentId, orderIds, paymentMethod = 'wallet') 
     }
 
     return updateResult;
-  });
+  }, { timeout: 15000 });
 
   const paymentMethodLabel = paymentMethod === 'momo' ? 'via MoMo' : "to agent's wallet";
   return {

@@ -42,7 +42,7 @@ const createTransaction = async (userId, amount, type, description, reference = 
 
       return transaction;
     } else {
-      // Use a transaction for atomicity
+      // Use a transaction for atomicity (15s timeout to avoid P2028 under load)
       return await prisma.$transaction(async (prismaTxInner) => {
         // Atomically increment the balance and get the updated value
         const updatedUser = await prismaTxInner.user.update({
@@ -69,7 +69,7 @@ const createTransaction = async (userId, amount, type, description, reference = 
         });
 
         return transaction;
-      });
+      }, { timeout: 15000 });
     }
   } catch (error) {
     console.error("Error creating transaction:", error);

@@ -151,7 +151,7 @@ const updateUserLoanStatus = async (userId, hasLoan, deductionAmount) => {
       });
       console.log("Database update result:", updatedUser);
       return updatedUser;
-    });
+    }, { timeout: 15000 });
   } catch (error) {
     console.error("Error updating loan status:", error.message);
     throw new Error(`Failed to update loan status: ${error.message}`);
@@ -248,7 +248,7 @@ const assignLoan = async (userId, amount) => {
       });
       
       return updatedUser;
-    });
+    }, { timeout: 15000 });
     
     return user;
   } catch (error) {
@@ -366,7 +366,7 @@ const deleteUser = async (id) => {
     return await prisma.user.delete({
       where: { id: userId },
     });
-  });
+  }, { timeout: 15000 });
 };
 
 const processExcelFile = async (filePath, filename, userId, network) => {

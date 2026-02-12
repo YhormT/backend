@@ -176,42 +176,46 @@ const processOrderItem = async (orderItemId, status) => {
   if (!validStatuses.includes(status)) {
     throw new Error("Invalid order status");
   }
-  const orderItem = await prisma.orderItem.update({
-    where: { id: orderItemId },
-    data: { status },
-    include: { order: true, product: true }
-  });
-
-  // Auto-refund logic for cancelled/canceled
-  if (["Cancelled", "Canceled"].includes(status)) {
-    const refundAmount = orderItem.product.price * orderItem.quantity;
-    const existingRefund = await prisma.transaction.findFirst({
-      where: {
-        userId: orderItem.order.userId,
-        type: "ORDER_ITEM_REFUND",
-        reference: `orderItem:${orderItemId}`
-      }
+  return await prisma.$transaction(async (tx) => {
+    const orderItem = await tx.orderItem.update({
+      where: { id: orderItemId },
+      data: { status },
+      include: { order: true, product: true }
     });
-    if (!existingRefund) {
-      // Refund user wallet and log transaction
-      await createTransaction(
-        orderItem.order.userId,
-        refundAmount,
-        "ORDER_ITEM_REFUND",
-        `Order item #${orderItemId} (${orderItem.product.name}) refunded`,
-        `orderItem:${orderItemId}`
-      );
-    }
-  }
 
-  await createTransaction(
-    orderItem.order.userId,
-    0,
-    "ORDER_ITEM_STATUS",
-    `Order item #${orderItemId} (${orderItem.product.name}) status changed to ${status}`,
-    `orderItem:${orderItemId}`
-  );
-  return orderItem;
+    // Auto-refund logic for cancelled/canceled
+    if (["Cancelled", "Canceled"].includes(status)) {
+      const refundAmount = orderItem.product.price * orderItem.quantity;
+      const existingRefund = await tx.transaction.findFirst({
+        where: {
+          userId: orderItem.order.userId,
+          type: "ORDER_ITEM_REFUND",
+          reference: `orderItem:${orderItemId}`
+        }
+      });
+      if (!existingRefund) {
+        // Refund user wallet and log transaction
+        await createTransaction(
+          orderItem.order.userId,
+          refundAmount,
+          "ORDER_ITEM_REFUND",
+          `Order item #${orderItemId} (${orderItem.product.name}) refunded`,
+          `orderItem:${orderItemId}`,
+          tx
+        );
+      }
+    }
+
+    await createTransaction(
+      orderItem.order.userId,
+      0,
+      "ORDER_ITEM_STATUS",
+      `Order item #${orderItemId} (${orderItem.product.name}) status changed to ${status}`,
+      `orderItem:${orderItemId}`,
+      tx
+    );
+    return orderItem;
+  }, { timeout: 15000 });
 };
 
 // ... (rest of the code remains the same)
@@ -507,165 +511,61 @@ const getUserCompletedOrders = async (userId) => {
 
 const updateSingleOrderItemStatus = async (itemId, newStatus) => {
   try {
-    const item = await prisma.orderItem.findUnique({
-      where: { id: parseInt(itemId) },
-      include: { order: true, product: true }
-    });
-    
-    if (!item) {
-      throw new Error("Order item not found");
-    }
-    
-    // If status is cancelled/canceled, handle refund logic for this single item
-    if (["Cancelled", "Canceled"].includes(newStatus)) {
-      const refundReference = `order_item_refund:${itemId}`;
-      
-      const existingRefund = await prisma.transaction.findFirst({
-        where: {
-          userId: item.order.userId,
-          type: "ORDER_ITEM_REFUND",
-          reference: refundReference
-        }
+    return await prisma.$transaction(async (tx) => {
+      const item = await tx.orderItem.findUnique({
+        where: { id: parseInt(itemId) },
+        include: { order: true, product: true }
       });
       
-      if (!existingRefund) {
-        const refundAmount = item.product.price * item.quantity;
-        
-        if (refundAmount > 0) {
-          await createTransaction(
-            item.order.userId,
-            refundAmount,
-            "ORDER_ITEM_REFUND",
-            `Item #${itemId} in order #${item.orderId} refunded (Amount: ${refundAmount})`,
-            refundReference
-          );
-        }
+      if (!item) {
+        throw new Error("Order item not found");
       }
-    }
-    
-    // Update single order item status
-    const updatedItem = await prisma.orderItem.update({
-      where: { id: parseInt(itemId) },
-      data: { status: newStatus }
-    });
-    
-    return { 
-      success: true, 
-      item: updatedItem,
-      message: `Successfully updated item #${itemId} to ${newStatus}` 
-    };
-  } catch (error) {
-    console.error("Error updating single order item status:", error);
-    throw new Error("Failed to update order item status");
-  }
-};
-
-const updateOrderItemsStatus = async (orderId, newStatus) => {
-  try {
-    const order = await prisma.order.findUnique({ 
-      where: { id: parseInt(orderId) }, 
-      select: { userId: true } 
-    });
-    
-    if (!order) {
-      throw new Error("Order not found");
-    }
-    
-    // If status is cancelled/canceled, handle refund logic
-    if (["Cancelled", "Canceled"].includes(newStatus)) {
-      const refundReference = `order_items_refund:${orderId}`;
       
-      const existingRefund = await prisma.transaction.findFirst({
-        where: {
-          userId: order.userId,
-          type: "ORDER_ITEMS_REFUND",
-          reference: refundReference
-        }
-      });
-      
-      if (!existingRefund) {
-        // Calculate total order amount
-        const items = await prisma.orderItem.findMany({
-          where: { orderId: parseInt(orderId) },
-          include: { product: true }
-        });
+      // If status is cancelled/canceled, handle refund logic for this single item
+      if (["Cancelled", "Canceled"].includes(newStatus)) {
+        const refundReference = `order_item_refund:${itemId}`;
         
-        let totalOrderAmount = 0;
-        for (const item of items) {
-          totalOrderAmount += item.product.price * item.quantity;
-        }
-        
-        // Find the original order transaction to get the amount that was deducted
-        const originalOrderTransaction = await prisma.transaction.findFirst({
+        const existingRefund = await tx.transaction.findFirst({
           where: {
-            userId: order.userId,
-            type: "ORDER",
-            reference: `order:${orderId}`,
-            amount: { lt: 0 } // Negative amount (deduction)
+            userId: item.order.userId,
+            type: "ORDER_ITEM_REFUND",
+            reference: refundReference
           }
         });
         
-        let refundAmount = totalOrderAmount;
-        
-        if (originalOrderTransaction) {
-          refundAmount = Math.abs(originalOrderTransaction.amount);
+        if (!existingRefund) {
+          const refundAmount = item.product.price * item.quantity;
+          
+          if (refundAmount > 0) {
+            await createTransaction(
+              item.order.userId,
+              refundAmount,
+              "ORDER_ITEM_REFUND",
+              `Item #${itemId} in order #${item.orderId} refunded (Amount: ${refundAmount})`,
+              refundReference,
+              tx
+            );
+          }
         }
-        
-        if (refundAmount > 0) {
-          // Process the refund
-          await createTransaction(
-            order.userId,
-            refundAmount,
-            "ORDER_ITEMS_REFUND",
-            `All items in order #${orderId} refunded (Amount: ${refundAmount})`,
-            refundReference
-          );
-        }
-      } else {
-        console.log(`Refund already processed for order ${orderId}. Skipping duplicate refund.`);
       }
-    }
-    
-    // Update order items status
-    const updatedItems = await prisma.orderItem.updateMany({ 
-      where: { orderId: parseInt(orderId) }, 
-      data: { status: newStatus } 
-    });
-    
-    // Create status change transaction (only if not a duplicate)
-    const statusChangeReference = `order_status:${orderId}:${newStatus}`;
-    const existingStatusChange = await prisma.transaction.findFirst({
-      where: {
-        userId: order.userId,
-        type: "ORDER_ITEMS_STATUS",
-        reference: statusChangeReference
-      }
-    });
-    
-    if (!existingStatusChange) {
-      await createTransaction(
-        order.userId, 
-        0, 
-        "ORDER_ITEMS_STATUS", 
-        `All items in order #${orderId} status changed to ${newStatus}`, 
-        statusChangeReference
-      );
-    }
-    
-    return { 
-      success: true, 
-      updatedCount: updatedItems.count, 
-      message: `Successfully updated ${updatedItems.count} order items to ${newStatus}` 
-    };
+      
+      // Update single order item status
+      const updatedItem = await tx.orderItem.update({
+        where: { id: parseInt(itemId) },
+        data: { status: newStatus }
+      });
+      
+      return { 
+        success: true, 
+        item: updatedItem,
+        message: `Successfully updated item #${itemId} to ${newStatus}` 
+      };
+    }, { timeout: 15000 });
   } catch (error) {
     console.error("Error updating order items status:", error);
     throw new Error("Failed to update order items status");
   }
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Exporting functions for use in controllers
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const orderService = {
   async getOrdersPaginated({ page = 1, limit = 20, filters = {} }) {
@@ -907,7 +807,7 @@ const orderService = {
       console.log(`✅ Created order ${order.id} with ${order.items.length} items`);
 
       return order;
-    });
+    }, { timeout: 15000 });
   },
 
   // Get multiple orders by IDs

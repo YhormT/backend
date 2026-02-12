@@ -330,12 +330,18 @@ const linkTransactionToOrder = async (externalRef, orderId) => {
 };
 
 // Get all successful payments that don't have orders (for reconciliation)
+// Excludes payments that already failed order creation (permanent failures like product unavailable)
 const getOrphanedSuccessfulPayments = async () => {
   return await prisma.paymentTransaction.findMany({
     where: {
       status: 'SUCCESS',
       orderId: null,
-      productId: { not: null }
+      productId: { not: null },
+      OR: [
+        { moolreMessage: null },
+        { moolreMessage: { equals: '' } },
+        { moolreMessage: { not: { startsWith: 'Order creation failed' } } }
+      ]
     },
     orderBy: { createdAt: 'desc' },
     take: 50

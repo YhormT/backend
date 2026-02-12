@@ -209,7 +209,7 @@ const verifyTopupPayment = async (reference) => {
           reference,
           message: 'Top-up successful! Wallet credited.'
         };
-      });
+      }, { timeout: 15000 });
 
       return result;
     } else if (isPending) {
@@ -416,7 +416,7 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
         topUpId: topUp.id,
         message: "Top-up successful!"
       };
-    });
+    }, { timeout: 15000 });
     // --- End Atomic Transaction ---
 
     return result;

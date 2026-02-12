@@ -77,7 +77,7 @@ const deleteProduct = async (id) => {
     return await tx.product.delete({
       where: { id }
     });
-  });
+  }, { timeout: 15000 });
 };
 
 const roleBasedPriceMap = {
