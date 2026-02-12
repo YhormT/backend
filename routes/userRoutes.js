@@ -43,6 +43,7 @@ router.put("/updateLoan/loanAmount", updateAdminLoanBalance);
 router.post("/upload-excel", upload.single("file"), uploadExcel);
 router.post("/download/:filename", downloadExcel);
 router.put('/:userId/updatePassword', updateUserPassword)
+router.put('/:userId/password', updateUserPassword)
 router.get('/:userId', getUserProfile);
 router.put('/:userId/profile', updateUserProfile);
 

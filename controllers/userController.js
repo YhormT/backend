@@ -16,6 +16,19 @@ const getAllUsers = async (req, res) => {
 const createUser = async (req, res) => {
   try {
     const { name, email, password, role, phone } = req.body;
+
+    // Check if email already exists
+    const existingEmail = await userService.getUserByEmail(email);
+    if (existingEmail) {
+      return res.status(409).json({ message: `A user with the email "${email}" already exists.` });
+    }
+
+    // Check if name already exists
+    const existingName = await prisma.user.findFirst({ where: { name } });
+    if (existingName) {
+      return res.status(409).json({ message: `A user with the name "${name}" already exists.` });
+    }
+
     const newUser = await userService.createUser({
       name,
       email,
@@ -316,14 +329,32 @@ const downloadExcel = async (req, res) => {
 
 
 const updateUserPassword = async (req, res) => {
-  const { userId } = req.params; // Assuming userId is passed in the URL params
-  const { newPassword } = req.body;
+  const { userId } = req.params;
+  const { currentPassword, newPassword } = req.body;
 
   try {
-    const updatedUser = await userService.updatePassword(parseInt(userId), newPassword);
-    res.status(200).json(updatedUser);
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Current password and new password are required" });
+    }
+
+    // Verify current password
+    const user = await userService.getUserById(parseInt(userId));
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.password !== currentPassword) {
+      return res.status(400).json({ success: false, message: "Current password is incorrect" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+    }
+
+    await userService.updatePassword(parseInt(userId), newPassword);
+    res.status(200).json({ success: true, message: "Password updated successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 }
 
