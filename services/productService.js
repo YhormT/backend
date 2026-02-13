@@ -143,7 +143,6 @@ const getAgentProducts = async () => {
   return await prisma.product.findMany({
     where: {
       showForAgents: true,
-      stock: { gt: 0 }
     },
     orderBy: { createdAt: "desc" },
   });

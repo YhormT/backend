@@ -17,7 +17,8 @@ const {
   updateAdminLoanBalance,
   updateAdminLoanBalanceController,
   refundUser,
-  assignLoan
+  assignLoan,
+  toggleSuspendUser
 } = require("../controllers/userController");
 
 const upload = require("../middleware/uploadMiddleware");
@@ -46,6 +47,7 @@ router.put('/:userId/updatePassword', updateUserPassword)
 router.put('/:userId/password', updateUserPassword)
 router.get('/:userId', getUserProfile);
 router.put('/:userId/profile', updateUserProfile);
+router.put('/:id/suspend', (req, res) => toggleSuspendUser(req, res, io, userSockets));
 
   return router;
 };

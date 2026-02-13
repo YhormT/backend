@@ -460,6 +460,33 @@ const updateAdminLoanBalanceController = async (req, res) => {
   }
 };
 
+const toggleSuspendUser = async (req, res, io, userSockets) => {
+  try {
+    const { id } = req.params;
+    const { isSuspended } = req.body;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { isSuspended },
+    });
+
+    // If suspending, force-logout the user via socket
+    if (isSuspended) {
+      const socketId = userSockets.get(String(id)) || userSockets.get(id);
+      if (socketId) {
+        io.to(socketId).emit('force-logout', {
+          message: 'Your account has been suspended by an administrator. Please contact admin for assistance.'
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, message: `User ${isSuspended ? 'suspended' : 'unsuspended'} successfully`, data: updatedUser });
+  } catch (error) {
+    console.error('Error toggling suspend:', error);
+    res.status(500).json({ success: false, message: 'Failed to update suspension status' });
+  }
+};
+
 module.exports = {
   getAllUsers,
   createUser,
@@ -478,5 +505,6 @@ module.exports = {
   updateAdminLoanBalance,
   updateAdminLoanBalanceController,
   refundUser,
-  assignLoan
+  assignLoan,
+  toggleSuspendUser
 };

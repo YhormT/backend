@@ -45,6 +45,10 @@ const submitCartInner = async (userId, mobileNumber = null) => {
       throw new Error("User not found");
     }
 
+    if (user.isSuspended) {
+      throw new Error("Your account is suspended. Please contact admin.");
+    }
+
     if (user.loanBalance < totalPrice) {
       throw new Error("Insufficient balance to place order");
     }

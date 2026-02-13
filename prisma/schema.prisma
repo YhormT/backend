@@ -29,6 +29,7 @@ model User {
   hasLoan          Boolean       @default(false)
   adminLoanBalance Float?        @db.Float
   isLoggedIn       Boolean       @default(false)
+  isSuspended      Boolean       @default(false)
   refundedTotal    Float         @default(0)
   storefrontSlug   String?       @unique @db.VarChar(100) // Unique storefront URL slug
   cart             Cart?
