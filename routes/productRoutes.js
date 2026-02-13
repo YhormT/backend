@@ -42,6 +42,12 @@ router.put('/toggle-agent/:id', productController.toggleAgentVisibility);
 // Bulk update agent visibility (optionally filtered by carrier)
 router.patch('/bulk-agent-visibility', productController.bulkUpdateAgentVisibility);
 
+// Toggle promo price for a single product
+router.put('/toggle-promo/:id', productController.togglePromoPrice);
+
+// Bulk switch between main and promo prices
+router.patch('/bulk-toggle-promo', productController.bulkTogglePromoPrice);
+
 // Admin: Delete product
 router.delete('/delete/:id', productController.deleteProduct);
 

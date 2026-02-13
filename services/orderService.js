@@ -34,7 +34,10 @@ const submitCartInner = async (userId, mobileNumber = null) => {
     }
 
     // Calculate total order price
-    const totalPrice = cart.items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const totalPrice = cart.items.reduce((sum, item) => {
+      const effectivePrice = (item.product.usePromoPrice && item.product.promoPrice != null) ? item.product.promoPrice : item.product.price;
+      return sum + effectivePrice * item.quantity;
+    }, 0);
 
     // Get user current balance
     const user = await tx.user.findUnique({ where: { id: userId } });
@@ -66,7 +69,7 @@ const submitCartInner = async (userId, mobileNumber = null) => {
             mobileNumber: item.mobileNumber,
             status: "Pending",
             productName: item.product.name,
-            productPrice: item.product.price,
+            productPrice: (item.product.usePromoPrice && item.product.promoPrice != null) ? item.product.promoPrice : item.product.price,
             productDescription: item.product.description,
           })),
         },

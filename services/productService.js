@@ -1,8 +1,8 @@
 const prisma = require("../config/db");
 
-const addProduct = async (name, description, price, stock) => {
+const addProduct = async (name, description, price, stock, promoPrice = null) => {
   return await prisma.product.create({
-    data: { name, description, price, stock },
+    data: { name, description, price, stock, promoPrice },
   });
 };
 
@@ -149,6 +149,23 @@ const getAgentProducts = async () => {
   });
 };
 
+// Toggle usePromoPrice for a single product
+const togglePromoPrice = async (id, usePromoPrice) => {
+  return await prisma.product.update({
+    where: { id },
+    data: { usePromoPrice },
+  });
+};
+
+// Bulk switch between main and promo prices - optionally filtered by carrier
+const bulkTogglePromoPrice = async (usePromoPrice, carrier = null) => {
+  const where = carrier ? { name: { contains: carrier } } : {};
+  return await prisma.product.updateMany({
+    where,
+    data: { usePromoPrice },
+  });
+};
+
 module.exports = {
   addProduct,
   getAllProducts,
@@ -164,5 +181,7 @@ module.exports = {
   bulkUpdateShopStock,
   toggleAgentVisibility,
   bulkUpdateAgentVisibility,
-  getAgentProducts
+  getAgentProducts,
+  togglePromoPrice,
+  bulkTogglePromoPrice
 };

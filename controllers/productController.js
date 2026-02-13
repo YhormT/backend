@@ -1,13 +1,14 @@
 const productService = require("../services/productService");
 
 const addProduct = async (req, res) => {
-  const { name, description, price, stock } = req.body;
+  const { name, description, price, stock, promoPrice } = req.body;
   try {
     const product = await productService.addProduct(
       name,
       description,
       price,
-      stock
+      stock,
+      promoPrice !== undefined ? promoPrice : null
     );
     res.json(product);
   } catch (error) {
@@ -179,6 +180,31 @@ const getAgentProducts = async (req, res) => {
   }
 };
 
+// Toggle promo price for a single product
+const togglePromoPrice = async (req, res) => {
+  try {
+    const { usePromoPrice } = req.body;
+    const product = await productService.togglePromoPrice(parseInt(req.params.id), usePromoPrice);
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Bulk switch between main and promo prices (optionally filtered by carrier)
+const bulkTogglePromoPrice = async (req, res) => {
+  const { usePromoPrice, carrier } = req.body;
+  if (typeof usePromoPrice !== 'boolean') {
+    return res.status(400).json({ error: 'usePromoPrice must be a boolean' });
+  }
+  try {
+    const result = await productService.bulkTogglePromoPrice(usePromoPrice, carrier || null);
+    res.json({ message: `Switched to ${usePromoPrice ? 'promo' : 'main'} prices${carrier ? ` for ${carrier}` : ' for all'}`, updatedCount: result.count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   addProduct,
   getAllProducts,
@@ -193,5 +219,7 @@ module.exports = {
   bulkUpdateShopStock,
   toggleAgentVisibility,
   bulkUpdateAgentVisibility,
-  getAgentProducts
+  getAgentProducts,
+  togglePromoPrice,
+  bulkTogglePromoPrice
 };
