@@ -54,7 +54,7 @@ const submitCartInner = async (userId, mobileNumber = null) => {
       });
     }
 
-    // Create order
+    // Create order with product snapshots to prevent data mismatch
     const order = await tx.order.create({
       data: {
         userId,
@@ -65,6 +65,9 @@ const submitCartInner = async (userId, mobileNumber = null) => {
             quantity: item.quantity,
             mobileNumber: item.mobileNumber,
             status: "Pending",
+            productName: item.product.name,
+            productPrice: item.product.price,
+            productDescription: item.product.description,
           })),
         },
       },
@@ -452,9 +455,9 @@ const getOrderStatus = async (options = {}) => {
         },
         product: {
           id: item.product.id,
-          name: item.product.name,
-          description: item.product.description,
-          price: item.product.price
+          name: item.productName || item.product.name,
+          description: item.productDescription || item.product.description,
+          price: item.productPrice != null ? item.productPrice : item.product.price
         },
         order: {
           id: order.id,
@@ -877,7 +880,10 @@ const orderService = {
               quantity: parseInt(item.quantity),
               price: parseFloat(item.price),
               mobileNumber: item.mobileNumber || null,
-              status: "Pending"
+              status: "Pending",
+              productName: item.productName || null,
+              productPrice: parseFloat(item.price) || null,
+              productDescription: item.productDescription || null
             }))
           }
         },

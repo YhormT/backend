@@ -116,6 +116,69 @@ const toggleShopVisibility = async (req, res) => {
 
 
 
+// Bulk update stock by carrier (single DB call instead of per-product)
+const bulkUpdateStockByCarrier = async (req, res) => {
+  const { carrier, stock } = req.body;
+  if (!carrier || typeof stock !== 'number' || stock < 0) {
+    return res.status(400).json({ error: 'Carrier and valid stock value are required' });
+  }
+  try {
+    const result = await productService.bulkUpdateStockByCarrier(carrier, stock);
+    res.json({ message: `${carrier} products stock set to ${stock}`, updatedCount: result.count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Bulk update shop stock (open/close all)
+const bulkUpdateShopStock = async (req, res) => {
+  const { closeStock } = req.body;
+  if (typeof closeStock !== 'boolean') {
+    return res.status(400).json({ error: 'closeStock must be a boolean' });
+  }
+  try {
+    const result = await productService.bulkUpdateShopStock(closeStock);
+    res.json({ message: closeStock ? 'All shop stock closed' : 'All shop stock opened', updatedCount: result.count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Toggle agent visibility for a single product
+const toggleAgentVisibility = async (req, res) => {
+  try {
+    const { showForAgents } = req.body;
+    const product = await productService.toggleAgentVisibility(parseInt(req.params.id), showForAgents);
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Bulk update agent visibility (optionally filtered by carrier)
+const bulkUpdateAgentVisibility = async (req, res) => {
+  const { showForAgents, carrier } = req.body;
+  if (typeof showForAgents !== 'boolean') {
+    return res.status(400).json({ error: 'showForAgents must be a boolean' });
+  }
+  try {
+    const result = await productService.bulkUpdateAgentVisibility(showForAgents, carrier || null);
+    res.json({ message: `Agent visibility ${showForAgents ? 'enabled' : 'disabled'}${carrier ? ` for ${carrier}` : ' for all'}`, updatedCount: result.count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get products visible for agents
+const getAgentProducts = async (req, res) => {
+  try {
+    const products = await productService.getAgentProducts();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   addProduct,
   getAllProducts,
@@ -125,5 +188,10 @@ module.exports = {
   setProductStockToZero,
   resetAllProductStock,
   getShopProducts,
-  toggleShopVisibility
+  toggleShopVisibility,
+  bulkUpdateStockByCarrier,
+  bulkUpdateShopStock,
+  toggleAgentVisibility,
+  bulkUpdateAgentVisibility,
+  getAgentProducts
 };

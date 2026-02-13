@@ -103,6 +103,52 @@ const getPriceForUserRole = (role, product) => {
   return product.price;
 };
 
+// Bulk update stock by carrier name filter using a single DB call
+const bulkUpdateStockByCarrier = async (carrier, stockValue) => {
+  return await prisma.product.updateMany({
+    where: {
+      name: { contains: carrier }
+    },
+    data: { stock: stockValue },
+  });
+};
+
+// Bulk update shopStockClosed for all shop products
+const bulkUpdateShopStock = async (closeStock) => {
+  return await prisma.product.updateMany({
+    where: { showInShop: true },
+    data: { shopStockClosed: closeStock },
+  });
+};
+
+// Toggle agent visibility for a single product
+const toggleAgentVisibility = async (id, showForAgents) => {
+  return await prisma.product.update({
+    where: { id },
+    data: { showForAgents },
+  });
+};
+
+// Bulk update agent visibility - optionally filtered by carrier
+const bulkUpdateAgentVisibility = async (showForAgents, carrier = null) => {
+  const where = carrier ? { name: { contains: carrier } } : {};
+  return await prisma.product.updateMany({
+    where,
+    data: { showForAgents },
+  });
+};
+
+// Get products visible for agents
+const getAgentProducts = async () => {
+  return await prisma.product.findMany({
+    where: {
+      showForAgents: true,
+      stock: { gt: 0 }
+    },
+    orderBy: { createdAt: "desc" },
+  });
+};
+
 module.exports = {
   addProduct,
   getAllProducts,
@@ -113,5 +159,10 @@ module.exports = {
   setAllProductStockToZero,
   getPriceForUserRole,
   getShopProducts,
-  toggleShopVisibility
+  toggleShopVisibility,
+  bulkUpdateStockByCarrier,
+  bulkUpdateShopStock,
+  toggleAgentVisibility,
+  bulkUpdateAgentVisibility,
+  getAgentProducts
 };

@@ -13,6 +13,9 @@ router.get('/', productController.getAllProducts);
 // Get products visible in shop (public endpoint)
 router.get('/shop', productController.getShopProducts);
 
+// Get products visible for agents
+router.get('/agent-products', productController.getAgentProducts);
+
 // Get a single product
 router.get('/:id', productController.getProductById);
 
@@ -27,6 +30,17 @@ router.put('/zero-stock/:id', productController.setProductStockToZero);
 
 router.patch('/reset-all-stock-to-zero', productController.resetAllProductStock);
 
+// Bulk update stock by carrier (single DB call)
+router.patch('/bulk-stock-by-carrier', productController.bulkUpdateStockByCarrier);
+
+// Bulk update shop stock (open/close all)
+router.patch('/bulk-shop-stock', productController.bulkUpdateShopStock);
+
+// Toggle agent visibility for a single product
+router.put('/toggle-agent/:id', productController.toggleAgentVisibility);
+
+// Bulk update agent visibility (optionally filtered by carrier)
+router.patch('/bulk-agent-visibility', productController.bulkUpdateAgentVisibility);
 
 // Admin: Delete product
 router.delete('/delete/:id', productController.deleteProduct);
