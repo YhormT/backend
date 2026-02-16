@@ -500,8 +500,7 @@ const getOrderHistory = async (userId) => {
         include: { product: true }
       }
     },
-    orderBy: { createdAt: "desc" },
-    take: 50
+    orderBy: { createdAt: "desc" }
   });
 };
 
