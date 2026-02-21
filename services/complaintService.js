@@ -39,15 +39,22 @@ class ComplaintService {
   // Get all complaints (for admin)
   async getAllComplaints(status = null) {
     try {
-      const whereClause = status ? { status } : {};
+      // Only add status filter if it's a valid non-empty string
+      const whereClause = (status && status !== 'all' && status.trim() !== '') 
+        ? { status: status.trim() } 
+        : {};
+      
+      console.log('[ComplaintService] Fetching with whereClause:', JSON.stringify(whereClause));
       
       const complaints = await prisma.complaint.findMany({
         where: whereClause,
         orderBy: { createdAt: 'desc' }
       });
       
+      console.log('[ComplaintService] Found', complaints.length, 'complaints');
       return complaints;
     } catch (error) {
+      console.error('[ComplaintService] Error fetching complaints:', error);
       throw new Error(`Failed to fetch complaints: ${error.message}`);
     }
   }

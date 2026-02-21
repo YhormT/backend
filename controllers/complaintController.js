@@ -49,19 +49,25 @@ class ComplaintController {
   async getAllComplaints(req, res) {
     try {
       const { status } = req.query;
-      console.log('Fetching complaints with status filter:', status);
-      const complaints = await complaintService.getAllComplaints(status);
-      console.log('Fetched complaints count:', complaints.length);
+      // Normalize status: treat 'all', empty string, or undefined as null (fetch all)
+      const normalizedStatus = (status && status !== 'all' && status.trim() !== '') 
+        ? status.trim() 
+        : null;
+      
+      console.log('[ComplaintController] Request status:', status, '-> normalized:', normalizedStatus);
+      const complaints = await complaintService.getAllComplaints(normalizedStatus);
+      console.log('[ComplaintController] Returning', complaints.length, 'complaints');
       
       res.status(200).json({
         success: true,
-        data: complaints,
+        data: complaints || [],
         message: 'Complaints fetched successfully'
       });
     } catch (error) {
-      console.error('Error fetching complaints:', error);
+      console.error('[ComplaintController] Error fetching complaints:', error);
       res.status(500).json({
         success: false,
+        data: [],
         message: error.message
       });
     }
