@@ -13,8 +13,9 @@ const addItemToCart = async (userId, productId, quantity, mobileNumber = null) =
     });
   }
    
-  // Calculate total price for this cart item
-  const totalPrice = product.price * quantity;
+  // Calculate total price for this cart item using effective price (promo if active)
+  const effectivePrice = (product.usePromoPrice && product.promoPrice != null) ? product.promoPrice : product.price;
+  const totalPrice = effectivePrice * quantity;
   
   // Create cart item
   const cartItem = await prisma.cartItem.create({
