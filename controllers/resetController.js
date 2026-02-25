@@ -29,6 +29,16 @@ const resetDatabase = async (req, res) => {
       
       // Delete in order to respect foreign key constraints
       
+      // 0a. Delete chat messages first (references conversations)
+      console.log('Deleting chat messages...');
+      const deletedChatMessages = await tx.chatMessage.deleteMany({});
+      console.log(`Deleted ${deletedChatMessages.count} chat messages`);
+      
+      // 0b. Delete chat conversations
+      console.log('Deleting chat conversations...');
+      const deletedChatConversations = await tx.chatConversation.deleteMany({});
+      console.log(`Deleted ${deletedChatConversations.count} chat conversations`);
+      
       // 1. Delete commission payouts first (references referral orders and users)
       console.log('Deleting commission payouts...');
       const deletedCommissionPayouts = await tx.commissionPayout.deleteMany({});

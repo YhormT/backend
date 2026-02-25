@@ -21,6 +21,7 @@ const shopRoutes = require('./routes/shopRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const complaintRoutes = require('./routes/complaintRoutes');
 const storefrontRoutes = require('./routes/storefrontRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -48,10 +49,49 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Chat events
+  socket.on('chat:send', (data) => {
+    // Relay message to recipient in real-time
+    const recipientSocketId = userSockets.get(data.recipientId) || userSockets.get(String(data.recipientId));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('chat:receive', data);
+    }
+  });
+
+  socket.on('chat:typing', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientId) || userSockets.get(String(data.recipientId));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('chat:typing', { senderId: data.senderId, conversationId: data.conversationId });
+    }
+  });
+
+  socket.on('chat:stop-typing', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientId) || userSockets.get(String(data.recipientId));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('chat:stop-typing', { senderId: data.senderId, conversationId: data.conversationId });
+    }
+  });
+
+  socket.on('chat:read', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientId) || userSockets.get(String(data.recipientId));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('chat:read', { conversationId: data.conversationId, readBy: data.readBy });
+    }
+  });
+
+  socket.on('chat:delete', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientId) || userSockets.get(String(data.recipientId));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('chat:delete', { messageId: data.messageId, forAll: data.forAll });
+    }
+  });
+
   socket.on('disconnect', () => {
     for (let [userId, socketId] of userSockets.entries()) {
       if (socketId === socket.id) {
         userSockets.delete(userId);
+        // Notify others this user went offline
+        io.emit('chat:user-status', { userId, isOnline: false });
         break;
       }
     }
@@ -90,6 +130,7 @@ app.use('/api/shop', shopRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/storefront', storefrontRoutes);
+app.use('/api/chat', chatRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Kelishub Server running on port ${PORT}`));

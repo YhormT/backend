@@ -305,3 +305,41 @@ model CommissionPayout {
   @@index([status], map: "CommissionPayout_status_idx")
   @@map("CommissionPayout")
 }
+
+// Chat Conversations between admin and agents
+model ChatConversation {
+  id            Int           @id @default(autoincrement())
+  participantA  Int           // admin userId
+  participantB  Int           // agent userId
+  lastMessageAt DateTime?
+  createdAt     DateTime      @default(now())
+  messages      ChatMessage[]
+
+  @@unique([participantA, participantB])
+  @@index([participantA], map: "ChatConversation_participantA_idx")
+  @@index([participantB], map: "ChatConversation_participantB_idx")
+  @@map("ChatConversation")
+}
+
+// Chat Messages with end-to-end encryption
+model ChatMessage {
+  id              Int              @id @default(autoincrement())
+  conversationId  Int
+  senderId        Int
+  content         String           @db.Text    // encrypted message content
+  iv              String           @db.VarChar(64)  // initialization vector for decryption
+  replyToId       Int?             // reply to another message
+  forwardedFrom   Int?             // original message id if forwarded
+  isDeleted       Boolean          @default(false)
+  deletedForAll   Boolean          @default(false)
+  readAt          DateTime?
+  createdAt       DateTime         @default(now())
+  conversation    ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo         ChatMessage?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         ChatMessage[]    @relation("MessageReplies")
+
+  @@index([conversationId], map: "ChatMessage_conversationId_idx")
+  @@index([senderId], map: "ChatMessage_senderId_idx")
+  @@index([replyToId], map: "ChatMessage_replyToId_idx")
+  @@map("ChatMessage")
+}
