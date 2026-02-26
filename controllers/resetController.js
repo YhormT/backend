@@ -29,12 +29,22 @@ const resetDatabase = async (req, res) => {
       
       // Delete in order to respect foreign key constraints
       
-      // 0a. Delete chat messages first (references conversations)
+      // 0. Delete shop chat messages first (references shop conversations)
+      console.log('Deleting shop chat messages...');
+      const deletedShopChatMessages = await tx.shopChatMessage.deleteMany({});
+      console.log(`Deleted ${deletedShopChatMessages.count} shop chat messages`);
+      
+      // 0a. Delete shop chat conversations
+      console.log('Deleting shop chat conversations...');
+      const deletedShopChatConversations = await tx.shopChatConversation.deleteMany({});
+      console.log(`Deleted ${deletedShopChatConversations.count} shop chat conversations`);
+      
+      // 0b. Delete chat messages (references conversations)
       console.log('Deleting chat messages...');
       const deletedChatMessages = await tx.chatMessage.deleteMany({});
       console.log(`Deleted ${deletedChatMessages.count} chat messages`);
       
-      // 0b. Delete chat conversations
+      // 0c. Delete chat conversations
       console.log('Deleting chat conversations...');
       const deletedChatConversations = await tx.chatConversation.deleteMany({});
       console.log(`Deleted ${deletedChatConversations.count} chat conversations`);

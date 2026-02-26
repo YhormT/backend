@@ -343,3 +343,41 @@ model ChatMessage {
   @@index([replyToId], map: "ChatMessage_replyToId_idx")
   @@map("ChatMessage")
 }
+
+// Shop Chat Conversations between admin and shop customers (identified by phone)
+model ShopChatConversation {
+  id              Int               @id @default(autoincrement())
+  customerPhone   String            @db.VarChar(20)
+  adminId         Int               // admin userId
+  lastMessageAt   DateTime?
+  createdAt       DateTime          @default(now())
+  messages        ShopChatMessage[]
+
+  @@unique([customerPhone, adminId])
+  @@index([customerPhone], map: "ShopChatConversation_customerPhone_idx")
+  @@index([adminId], map: "ShopChatConversation_adminId_idx")
+  @@map("ShopChatConversation")
+}
+
+// Shop Chat Messages
+model ShopChatMessage {
+  id              Int                  @id @default(autoincrement())
+  conversationId  Int
+  senderType      String               @db.VarChar(10) // "customer" or "admin"
+  senderId        String               @db.VarChar(50) // phone number for customer, admin userId for admin
+  content         String               @db.Text
+  iv              String               @db.VarChar(64)
+  replyToId       Int?
+  isDeleted       Boolean              @default(false)
+  deletedForAll   Boolean              @default(false)
+  readAt          DateTime?
+  createdAt       DateTime             @default(now())
+  conversation    ShopChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo         ShopChatMessage?     @relation("ShopMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         ShopChatMessage[]    @relation("ShopMessageReplies")
+
+  @@index([conversationId], map: "ShopChatMessage_conversationId_idx")
+  @@index([senderType], map: "ShopChatMessage_senderType_idx")
+  @@index([replyToId], map: "ShopChatMessage_replyToId_idx")
+  @@map("ShopChatMessage")
+}

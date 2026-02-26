@@ -22,6 +22,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const complaintRoutes = require('./routes/complaintRoutes');
 const storefrontRoutes = require('./routes/storefrontRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const shopChatRoutes = require('./routes/shopChatRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,7 +46,7 @@ io.on('connection', (socket) => {
   socket.on('register', (data) => {
     const userId = (typeof data === 'object' && data.userId) ? data.userId : data;
     if (userId) {
-      userSockets.set(userId, socket.id);
+      userSockets.set(String(userId), socket.id);
     }
   });
 
@@ -86,6 +87,48 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Shop chat events (phone-based identity, keys prefixed with "shop:")
+  socket.on('shop-chat:register', (data) => {
+    if (data.phone) {
+      userSockets.set(`shop:${data.phone}`, socket.id);
+    }
+  });
+
+  socket.on('shop-chat:send', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientKey) || userSockets.get(String(data.recipientKey));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('shop-chat:receive', data);
+    }
+  });
+
+  socket.on('shop-chat:typing', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientKey) || userSockets.get(String(data.recipientKey));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('shop-chat:typing', { senderKey: data.senderKey, conversationId: data.conversationId });
+    }
+  });
+
+  socket.on('shop-chat:stop-typing', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientKey) || userSockets.get(String(data.recipientKey));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('shop-chat:stop-typing', { senderKey: data.senderKey, conversationId: data.conversationId });
+    }
+  });
+
+  socket.on('shop-chat:read', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientKey) || userSockets.get(String(data.recipientKey));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('shop-chat:read', { conversationId: data.conversationId });
+    }
+  });
+
+  socket.on('shop-chat:delete', (data) => {
+    const recipientSocketId = userSockets.get(data.recipientKey) || userSockets.get(String(data.recipientKey));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('shop-chat:delete', { messageId: data.messageId, forAll: data.forAll });
+    }
+  });
+
   socket.on('disconnect', () => {
     for (let [userId, socketId] of userSockets.entries()) {
       if (socketId === socket.id) {
@@ -100,6 +143,7 @@ io.on('connection', (socket) => {
 
 module.exports = { app, io, userSockets };
 
+app.set('io', io);
 app.use(express.json());
 app.use(cors());
 app.use(helmet());
@@ -131,6 +175,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/storefront', storefrontRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/shop-chat', shopChatRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Kelishub Server running on port ${PORT}`));

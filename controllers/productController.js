@@ -42,6 +42,8 @@ const updateProduct = async (req, res) => {
       parseInt(req.params.id),
       req.body
     );
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'update', productId: product.id });
     res.json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -51,6 +53,8 @@ const updateProduct = async (req, res) => {
 const setProductStockToZero = async (req, res) => {
   try {
     const product = await productService.setProductStockToZero(parseInt(req.params.id));
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'zero-stock', productId: product.id });
     res.json({ message: "Product stock set to zero", product });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -81,6 +85,8 @@ const resetAllProductStock = async (req, res) => {
     //   message: 'All product stocks have been set to 0.',
     //   updatedCount: result.count,
     // });
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'bulk-reset', stock });
     res.status(200).json({
       message: `All product stocks updated to ${stock}`,
       updatedCount: result.count,
@@ -125,6 +131,8 @@ const bulkUpdateStockByCarrier = async (req, res) => {
   }
   try {
     const result = await productService.bulkUpdateStockByCarrier(carrier, stock);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'bulk-carrier', carrier, stock });
     res.json({ message: `${carrier} products stock set to ${stock}`, updatedCount: result.count });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -139,6 +147,8 @@ const bulkUpdateShopStock = async (req, res) => {
   }
   try {
     const result = await productService.bulkUpdateShopStock(closeStock);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'bulk-shop', closeStock });
     res.json({ message: closeStock ? 'All shop stock closed' : 'All shop stock opened', updatedCount: result.count });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -150,6 +160,8 @@ const toggleAgentVisibility = async (req, res) => {
   try {
     const { showForAgents } = req.body;
     const product = await productService.toggleAgentVisibility(parseInt(req.params.id), showForAgents);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'visibility', productId: product.id });
     res.json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -164,6 +176,8 @@ const bulkUpdateAgentVisibility = async (req, res) => {
   }
   try {
     const result = await productService.bulkUpdateAgentVisibility(showForAgents, carrier || null);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'bulk-visibility', showForAgents, carrier });
     res.json({ message: `Agent visibility ${showForAgents ? 'enabled' : 'disabled'}${carrier ? ` for ${carrier}` : ' for all'}`, updatedCount: result.count });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -185,6 +199,8 @@ const togglePromoPrice = async (req, res) => {
   try {
     const { usePromoPrice } = req.body;
     const product = await productService.togglePromoPrice(parseInt(req.params.id), usePromoPrice);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'promo', productId: product.id });
     res.json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -199,6 +215,8 @@ const bulkTogglePromoPrice = async (req, res) => {
   }
   try {
     const result = await productService.bulkTogglePromoPrice(usePromoPrice, carrier || null);
+    const io = req.app.get('io');
+    if (io) io.emit('product:stock-update', { type: 'bulk-promo', usePromoPrice, carrier });
     res.json({ message: `Switched to ${usePromoPrice ? 'promo' : 'main'} prices${carrier ? ` for ${carrier}` : ' for all'}`, updatedCount: result.count });
   } catch (error) {
     res.status(500).json({ error: error.message });
