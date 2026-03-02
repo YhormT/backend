@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/db');
 const { encrypt, decrypt } = require('../utils/encryption');
 
 class ChatService {
@@ -103,57 +102,59 @@ class ChatService {
       }
     });
 
-    // Get unread counts and other participant info
-    const result = await Promise.all(conversations.map(async (conv) => {
-      const otherUserId = conv.participantA === userId ? conv.participantB : conv.participantA;
-      
-      const [otherUser, unreadCount] = await Promise.all([
-        prisma.user.findUnique({
-          where: { id: otherUserId },
-          select: { id: true, name: true, role: true, isLoggedIn: true }
-        }),
-        prisma.chatMessage.count({
-          where: {
-            conversationId: conv.id,
-            senderId: { not: userId },
-            readAt: null,
-            isDeleted: false
-          }
-        })
-      ]);
+    if (conversations.length === 0) return [];
 
+    // Batch: collect all other participant IDs
+    const otherUserIds = conversations.map(conv =>
+      conv.participantA === userId ? conv.participantB : conv.participantA
+    );
+    const convIds = conversations.map(c => c.id);
+
+    // Single query for all other users
+    const [otherUsers, unreadCounts] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: otherUserIds } },
+        select: { id: true, name: true, role: true, isLoggedIn: true }
+      }),
+      // Single query: group unread counts by conversationId
+      prisma.chatMessage.groupBy({
+        by: ['conversationId'],
+        where: {
+          conversationId: { in: convIds },
+          senderId: { not: userId },
+          readAt: null,
+          isDeleted: false
+        },
+        _count: { id: true }
+      })
+    ]);
+
+    const userMap = new Map(otherUsers.map(u => [u.id, u]));
+    const unreadMap = new Map(unreadCounts.map(r => [r.conversationId, r._count.id]));
+
+    return conversations.map((conv, i) => {
       const lastMessage = conv.messages[0] ? this.decryptMessage(conv.messages[0]) : null;
-
       return {
         id: conv.id,
-        otherUser,
+        otherUser: userMap.get(otherUserIds[i]) || null,
         lastMessage,
-        unreadCount,
+        unreadCount: unreadMap.get(conv.id) || 0,
         lastMessageAt: conv.lastMessageAt,
         createdAt: conv.createdAt
       };
-    }));
-
-    return result;
+    });
   }
 
-  // Get total unread message count for a user
+  // Get total unread message count for a user - single nested query
   async getUnreadCount(userId) {
-    const conversations = await prisma.chatConversation.findMany({
-      where: {
-        OR: [
-          { participantA: userId },
-          { participantB: userId }
-        ]
-      },
-      select: { id: true }
-    });
-
-    if (conversations.length === 0) return 0;
-
     return prisma.chatMessage.count({
       where: {
-        conversationId: { in: conversations.map(c => c.id) },
+        conversation: {
+          OR: [
+            { participantA: userId },
+            { participantB: userId }
+          ]
+        },
         senderId: { not: userId },
         readAt: null,
         isDeleted: false

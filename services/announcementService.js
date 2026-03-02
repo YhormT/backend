@@ -119,6 +119,19 @@ class AnnouncementService {
     }
   }
 
+  // Get shop alert (public - modal popup shown on every shop visit)
+  async getShopAlert() {
+    try {
+      const alert = await prisma.announcement.findFirst({
+        where: { isActive: true, target: 'shop-alert' },
+        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }]
+      });
+      return alert || null;
+    } catch (error) {
+      throw new Error(`Failed to fetch shop alert: ${error.message}`);
+    }
+  }
+
   // Get shop announcements (public - for shop page banner)
   async getShopAnnouncements() {
     try {

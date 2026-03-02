@@ -1,4 +1,7 @@
 const chatService = require('../services/chatService');
+const prisma = require('../config/db');
+const cache = require('../utils/cache');
+const { decrypt } = require('../utils/encryption');
 
 class ChatController {
   // GET /api/chat/conversations
@@ -86,10 +89,14 @@ class ChatController {
   async getUnreadCount(req, res) {
     try {
       const userId = req.user.id;
-      const count = await chatService.getUnreadCount(userId);
+      const cacheKey = `chat_unread_${userId}`;
+      let count = cache.get(cacheKey);
+      if (count === null) {
+        count = await chatService.getUnreadCount(userId);
+        cache.set(cacheKey, count, 10000); // 10 second cache matches polling interval
+      }
       res.json({ success: true, count });
     } catch (error) {
-      console.error('Error fetching unread count:', error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
@@ -125,11 +132,6 @@ class ChatController {
       if (!messageId || !targetUserIds || !targetUserIds.length) {
         return res.status(400).json({ success: false, message: 'messageId and targetUserIds required' });
       }
-
-      // Get original message to forward its content
-      const { PrismaClient } = require('@prisma/client');
-      const prisma = new PrismaClient();
-      const { decrypt } = require('../utils/encryption');
 
       const original = await prisma.chatMessage.findUnique({ where: { id: messageId } });
       if (!original || original.isDeleted) {

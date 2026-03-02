@@ -257,7 +257,6 @@ exports.getOrders = async (req, res) => {
 
 // Excel Upload Controller for Agent Orders
 exports.uploadExcelOrders = async (req, res) => {
-  console.log('--- [UPLOAD EXCEL ORDERS] Endpoint hit ---');
   const prisma = require('../config/db');
   const userService = require('../services/userService');
   const productService = require('../services/productService');
@@ -268,7 +267,6 @@ exports.uploadExcelOrders = async (req, res) => {
   try {
     const { agentId, network } = req.body;
     if (!req.file) {
-      console.log('ERROR: No file uploaded.');
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
     if (!agentId || !network) {
@@ -282,20 +280,12 @@ exports.uploadExcelOrders = async (req, res) => {
       const workbook = xlsx.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-      console.log('Excel parsed. Rows found:', data.length);
-      if (data.length > 0) {
-        console.log('First row sample:', data[0]);
-      }
     } catch (parseErr) {
-      console.log('ERROR parsing Excel file:', parseErr);
       return res.status(400).json({ success: false, message: 'Failed to parse Excel file.' });
     }
 
     let total = data.length;
     let errorReport = [];
-    if (total === 0) {
-      console.log('WARNING: Excel file parsed but contains zero rows.');
-    }
 
     // Fetch agent/user and role
     const agent = await userService.getUserById(parseInt(agentId));
@@ -373,7 +363,6 @@ exports.uploadExcelOrders = async (req, res) => {
     fs.unlinkSync(filePath);
     return res.json({ success: true, message: `${added} products added to cart.`, summary: { total, added } });
   } catch (err) {
-    console.log('ERROR in uploadExcelOrders:', err);
     if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) {}
     res.status(500).json({ success: false, message: err.message });
   }
@@ -401,7 +390,6 @@ exports.downloadSimplifiedTemplate = (req, res) => {
 
 // New Excel Upload Controller for Simplified (2-column) Agent Orders
 exports.uploadSimplifiedExcelOrders = async (req, res) => {
-  console.log('--- [UPLOAD SIMPLIFIED EXCEL ORDERS] Endpoint hit ---');
   const prisma = require('../config/db');
   const userService = require('../services/userService');
   const cartService = require('../services/cartService');
@@ -411,7 +399,6 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
   try {
     const { agentId, network } = req.body;
     if (!req.file) {
-      console.log('ERROR: No file uploaded.');
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
     if (!agentId || !network) {
@@ -424,17 +411,12 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
       const workbook = xlsx.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-      console.log('Simplified Excel parsed. Rows found:', data.length);
     } catch (parseErr) {
-      console.log('ERROR parsing Excel file:', parseErr);
       return res.status(400).json({ success: false, message: 'Failed to parse Excel file.' });
     }
 
     let total = data.length;
     let errorReport = [];
-    if (total === 0) {
-      console.log('WARNING: Excel file parsed but contains zero rows.');
-    }
 
     const agent = await userService.getUserById(parseInt(agentId));
     if (!agent) {
@@ -444,11 +426,6 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
     const userRole = agent.role; 
 
     let productsToAdd = [];
-    
-    // Log first row keys for debugging
-    if (data.length > 0) {
-      console.log('Excel column headers found:', Object.keys(data[0]));
-    }
     
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -488,10 +465,6 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
         productName = `${network.toUpperCase()} - ${userRole.toUpperCase()}`;
       }
 
-      // --- DEBUG LOGGING ---
-      console.log(`Searching for product with NAME: [${productName}] and DESCRIPTION: [${productDescription}]`);
-      // --------------------
-
       const product = await prisma.product.findFirst({
         where: {
           name: productName,
@@ -501,15 +474,6 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
 
       if (!product) {
         rowErrors.push(`Product not found for your user type (${userRole}) with bundle ${productDescription} and network ${network}.`);
-
-        // --- DEBUG: Log all available products for easier debugging ---
-        console.log('--- AVAILABLE PRODUCTS IN DATABASE ---');
-        const allProducts = await prisma.product.findMany({
-          select: { name: true, description: true, stock: true }
-        });
-        console.table(allProducts);
-        console.log('-----------------------------------------');
-        // ----------------------------------------------------------
       } else {
           productsToAdd.push({ 
               product, 
@@ -547,7 +511,6 @@ exports.uploadSimplifiedExcelOrders = async (req, res) => {
     });
 
   } catch (err) {
-    console.log('ERROR in uploadSimplifiedExcelOrders:', err);
     if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) {}
     res.status(500).json({ success: false, message: err.message });
   }
@@ -569,29 +532,17 @@ exports.updateOrderStatus = async (req, res) => {
 // Direct order creation from ext_agent system
 exports.createDirectOrder = async (req, res) => {
   try {
-    console.log(`🚀 [DIRECT ORDER] Endpoint hit - POST /order/create-direct`);
-    console.log(`🚀 [DIRECT ORDER] Request body:`, req.body);
-    
     const { userId, items, totalAmount } = req.body;
-    
-    console.log(`📋 Creating direct order for user ${userId}...`);
-    console.log(`Order details:`, { userId, itemCount: items?.length, totalAmount });
     
     // Validate required fields
     if (!userId || !items || !Array.isArray(items) || items.length === 0) {
-      console.log(`❌ [DIRECT ORDER] Validation failed - missing required fields`);
       return res.status(400).json({ 
         success: false, 
         message: 'Missing required fields: userId, items array' 
       });
     }
 
-    // Create order using the existing order service
-    console.log(`🔄 [DIRECT ORDER] Calling orderService.createDirectOrder...`);
     const order = await orderService.createDirectOrder(userId, items, totalAmount);
-    
-    console.log(`✅ [DIRECT ORDER] Successfully created order ${order.id} for user ${userId}`);
-    console.log(`✅ [DIRECT ORDER] Order will now appear in data_package_dashboard`);
     
     // Emit real-time notification to admin
     try {
@@ -606,11 +557,7 @@ exports.createDirectOrder = async (req, res) => {
       order
     });
   } catch (error) {
-    console.error(`❌ [DIRECT ORDER] Error creating direct order:`, error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 }
 

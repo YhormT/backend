@@ -33,7 +33,8 @@ const io = new Server(server, {
   }
 });
 
-const userSockets = new Map();
+const userSockets = new Map();        // userId -> socketId
+const socketUsers = new Map();        // socketId -> userId (reverse map for O(1) disconnect)
 const MAX_SOCKET_CONNECTIONS = 500; // Limit for Railway memory constraints
 
 io.on('connection', (socket) => {
@@ -47,6 +48,7 @@ io.on('connection', (socket) => {
     const userId = (typeof data === 'object' && data.userId) ? data.userId : data;
     if (userId) {
       userSockets.set(String(userId), socket.id);
+      socketUsers.set(socket.id, String(userId));
     }
   });
 
@@ -90,7 +92,9 @@ io.on('connection', (socket) => {
   // Shop chat events (phone-based identity, keys prefixed with "shop:")
   socket.on('shop-chat:register', (data) => {
     if (data.phone) {
-      userSockets.set(`shop:${data.phone}`, socket.id);
+      const key = `shop:${data.phone}`;
+      userSockets.set(key, socket.id);
+      socketUsers.set(socket.id, key);
     }
   });
 
@@ -130,18 +134,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    for (let [userId, socketId] of userSockets.entries()) {
-      if (socketId === socket.id) {
-        userSockets.delete(userId);
-        // Notify others this user went offline
-        io.emit('chat:user-status', { userId, isOnline: false });
-        break;
-      }
+    const userId = socketUsers.get(socket.id);
+    if (userId) {
+      userSockets.delete(userId);
+      socketUsers.delete(socket.id);
+      io.emit('chat:user-status', { userId, isOnline: false });
     }
   });
 });
 
-module.exports = { app, io, userSockets };
+module.exports = { app, io, userSockets, socketUsers };
 
 app.set('io', io);
 app.use(express.json());
@@ -156,7 +158,6 @@ app.get('/health', (req, res) => {
 const userRoutes = createUserRouter(io, userSockets);
 app.use('/api/users', userRoutes);
 
-app.use('/api/order', pasteRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/products', productRoutes);

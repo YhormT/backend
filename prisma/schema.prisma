@@ -75,6 +75,8 @@ model Product {
   storefrontProducts StorefrontProduct[]
   referralOrders     ReferralOrder[]
 
+  @@index([name], map: "Product_name_idx")
+  @@index([name, description], map: "Product_name_description_idx")
   @@map("Product")
 }
 
@@ -107,6 +109,7 @@ model OrderItem {
 
   @@index([orderId], map: "OrderItem_orderId_fkey")
   @@index([productId], map: "OrderItem_productId_fkey")
+  @@index([status], map: "OrderItem_status_idx")
   @@map("OrderItem")
 }
 

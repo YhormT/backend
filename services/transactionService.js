@@ -281,46 +281,34 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
       whereClause.amount = { lt: 0 };
     }
 
-    // Get total count
-    const totalTransactions = await prisma.transaction.count({
-      where: whereClause
-    });
+    // Single query: count + credits sum + debits sum in one pass
+    const [countResult, aggResult] = await Promise.all([
+      prisma.transaction.count({ where: whereClause }),
+      prisma.transaction.aggregate({
+        where: whereClause,
+        _sum: { amount: true },
+        _count: { id: true }
+      })
+    ]);
 
-    // Get sum of credits and debits
-    const aggregations = await prisma.transaction.aggregate({
-      where: whereClause,
-      _sum: {
-        amount: true
-      }
-    });
+    // Credits and debits in parallel (2 queries instead of 3)
+    const [creditsResult, debitsResult] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { ...whereClause, amount: { gte: 0 } },
+        _sum: { amount: true }
+      }),
+      prisma.transaction.aggregate({
+        where: { ...whereClause, amount: { lt: 0 } },
+        _sum: { amount: true }
+      })
+    ]);
 
-    // Get separate sums for credits and debits
-    const creditsSum = await prisma.transaction.aggregate({
-      where: {
-        ...whereClause,
-        amount: { gte: 0 }
-      },
-      _sum: {
-        amount: true
-      }
-    });
-
-    const debitsSum = await prisma.transaction.aggregate({
-      where: {
-        ...whereClause,
-        amount: { lt: 0 }
-      },
-      _sum: {
-        amount: true
-      }
-    });
-
-    const totalCredits = creditsSum._sum.amount || 0;
-    const totalDebits = debitsSum._sum.amount || 0;
+    const totalCredits = creditsResult._sum.amount || 0;
+    const totalDebits = debitsResult._sum.amount || 0;
     const netBalance = totalCredits + totalDebits;
 
     return {
-      totalTransactions,
+      totalTransactions: countResult,
       totalCredits,
       totalDebits,
       netBalance

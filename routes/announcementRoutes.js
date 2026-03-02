@@ -9,6 +9,7 @@ const adminMiddleware = require('../middleware/adminMiddleware'); // Your admin 
 
 // Public routes
 router.get('/active', announcementController.getActiveAnnouncements);
+router.get('/shop-alert', announcementController.getShopAlert);
 router.get('/shop', announcementController.getShopAnnouncements);
 router.get('/audience/:audience', announcementController.getAnnouncementsForAudience);
 router.get('/unread/:audience', announcementController.getUnreadCount);
