@@ -169,7 +169,7 @@ app.use('/api', transactionRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/sms', smsRoutes);
 app.use('/api/announcement', announcementRoutes);
-app.use('/api', pasteRoutes);
+app.use('/api/order', pasteRoutes);
 app.use('/api/reset', resetRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/payment', paymentRoutes);
