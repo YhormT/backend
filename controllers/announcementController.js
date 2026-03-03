@@ -161,6 +161,10 @@ class AnnouncementController {
       
       const announcement = await announcementService.createAnnouncement(announcementData);
       
+      // Emit real-time update to all connected clients
+      const io = req.app.get('io');
+      if (io) io.emit('announcement:new', announcement);
+      
       res.status(201).json({
         success: true,
         data: announcement,
@@ -182,6 +186,9 @@ class AnnouncementController {
       
       const announcement = await announcementService.updateAnnouncement(id, updateData);
       
+      const io = req.app.get('io');
+      if (io) io.emit('announcement:new', announcement);
+      
       res.status(200).json({
         success: true,
         data: announcement,
@@ -201,6 +208,9 @@ class AnnouncementController {
       const { id } = req.params;
       
       const result = await announcementService.deleteAnnouncement(id);
+      
+      const io = req.app.get('io');
+      if (io) io.emit('announcement:new', { deleted: true, id });
       
       res.status(200).json({
         success: true,
@@ -240,6 +250,9 @@ class AnnouncementController {
       const { id } = req.params;
       
       const announcement = await announcementService.toggleAnnouncementStatus(id);
+      
+      const io = req.app.get('io');
+      if (io) io.emit('announcement:new', announcement);
       
       res.status(200).json({
         success: true,
