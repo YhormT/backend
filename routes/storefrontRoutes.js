@@ -1,53 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const storefrontController = require('../controllers/storefrontController');
+const authMiddleware = require('../middleware/authMiddleware');
+const adminMiddleware = require('../middleware/adminMiddleware');
 
-// ==================== AGENT STOREFRONT MANAGEMENT ====================
+// ==================== AGENT STOREFRONT MANAGEMENT (requires auth) ====================
 
-// Get or create storefront slug
-router.get('/agent/:userId/slug', storefrontController.getStorefrontSlug);
+router.get('/agent/:userId/slug', authMiddleware, storefrontController.getStorefrontSlug);
+router.get('/agent/:userId/products/available', authMiddleware, storefrontController.getAvailableProducts);
+router.get('/agent/:userId/products', authMiddleware, storefrontController.getAgentStorefrontProducts);
+router.post('/agent/:userId/products', authMiddleware, storefrontController.addProductToStorefront);
+router.put('/agent/:userId/products/:productId', authMiddleware, storefrontController.updateProductPrice);
+router.delete('/agent/:userId/products/:productId', authMiddleware, storefrontController.removeProduct);
+router.patch('/agent/:userId/products/:productId/toggle', authMiddleware, storefrontController.toggleProduct);
+router.get('/agent/:userId/referrals', authMiddleware, storefrontController.getAgentReferralSummary);
 
-// Get available products for storefront (filtered by agent role)
-router.get('/agent/:userId/products/available', storefrontController.getAvailableProducts);
+// ==================== PUBLIC STOREFRONT (no auth - customers access these) ====================
 
-// Get agent's storefront products
-router.get('/agent/:userId/products', storefrontController.getAgentStorefrontProducts);
-
-// Add product to storefront
-router.post('/agent/:userId/products', storefrontController.addProductToStorefront);
-
-// Update product price
-router.put('/agent/:userId/products/:productId', storefrontController.updateProductPrice);
-
-// Remove product from storefront
-router.delete('/agent/:userId/products/:productId', storefrontController.removeProduct);
-
-// Toggle product active status
-router.patch('/agent/:userId/products/:productId/toggle', storefrontController.toggleProduct);
-
-// Get agent's referral summary
-router.get('/agent/:userId/referrals', storefrontController.getAgentReferralSummary);
-
-// ==================== PUBLIC STOREFRONT ====================
-
-// Get public storefront by slug
 router.get('/public/:slug', storefrontController.getPublicStorefront);
-
-// Initialize referral payment
 router.post('/public/:slug/pay', storefrontController.initializeReferralPayment);
-
-// Verify referral payment
 router.post('/verify', storefrontController.verifyReferralPayment);
 
-// ==================== ADMIN FUNCTIONS ====================
+// ==================== ADMIN FUNCTIONS (requires admin auth) ====================
 
-// Get all referral orders
-router.get('/admin/referrals', storefrontController.getAllReferralOrders);
-
-// Mark commissions as paid
-router.post('/admin/commissions/pay', storefrontController.markCommissionsPaid);
-
-// Get weekly commission summary
-router.get('/admin/commissions/weekly', storefrontController.getWeeklyCommissionSummary);
+router.get('/admin/referrals', authMiddleware, adminMiddleware, storefrontController.getAllReferralOrders);
+router.post('/admin/commissions/pay', authMiddleware, adminMiddleware, storefrontController.markCommissionsPaid);
+router.get('/admin/commissions/weekly', authMiddleware, adminMiddleware, storefrontController.getWeeklyCommissionSummary);
 
 module.exports = router;

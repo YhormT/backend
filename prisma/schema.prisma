@@ -384,3 +384,15 @@ model ShopChatMessage {
   @@index([replyToId], map: "ShopChatMessage_replyToId_idx")
   @@map("ShopChatMessage")
 }
+
+// External API Keys for partner integrations
+model ExternalApiKey {
+  id           Int       @id @default(autoincrement())
+  partnerName  String
+  apiKey       String    @unique
+  isActive     Boolean   @default(true)
+  totalOrders  Int       @default(0)
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}

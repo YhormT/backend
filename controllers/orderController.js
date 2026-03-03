@@ -140,6 +140,11 @@ exports.getOrderHistory = async (req, res) => {
       return res.status(400).json({ error: "User ID is required" });
     }
 
+    // Users can only view their own order history; admins can view any
+    if (req.user.role?.toUpperCase() !== 'ADMIN' && req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only view your own order history" });
+    }
+
     const orders = await getOrderHistory(userId);
 
     if (!orders.length) {

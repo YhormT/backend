@@ -837,6 +837,9 @@ const orderService = {
       where: { status: 'Processing' },
       data: { status: 'Completed' }
     });
+    // Invalidate cached status counts so next fetchOrders returns fresh data
+    cache.delete('order_status_counts');
+    cache.delete('order_stats');
     return { count: result.count };
   },
 

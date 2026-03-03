@@ -22,6 +22,8 @@ const {
 } = require("../controllers/userController");
 
 const upload = require("../middleware/uploadMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
+const adminMiddleware = require("../middleware/adminMiddleware");
 
 const createUserRouter = (io, userSockets) => {
   const router = express.Router();
@@ -30,24 +32,28 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => cb(null, file.originalname),
 });
-router.get("/", getAllUsers);
-router.post("/", createUser);
-router.put("/:id", (req, res) => updateUser(req, res, io, userSockets));
-router.delete("/:id", deleteUser);
-router.post("/loan/assign", assignLoan);
-router.post("/refund", refundUser);
-router.post("/repay-loan", repayLoan);
-router.post("/loan/repay", refundUser);
-router.get("/loan/:userId", getLoanBalance);
-router.put("/loan/status", updateLoanStatus);
-router.put("/updateLoan/loanAmount", updateAdminLoanBalance);
-router.post("/upload-excel", upload.single("file"), uploadExcel);
-router.post("/download/:filename", downloadExcel);
-router.put('/:userId/updatePassword', updateUserPassword)
-router.put('/:userId/password', updateUserPassword)
-router.get('/:userId', getUserProfile);
-router.put('/:userId/profile', updateUserProfile);
-router.put('/:id/suspend', (req, res) => toggleSuspendUser(req, res, io, userSockets));
+
+// Admin-only routes
+router.get("/", authMiddleware, adminMiddleware, getAllUsers);
+router.post("/", authMiddleware, adminMiddleware, createUser);
+router.put("/:id", authMiddleware, adminMiddleware, (req, res) => updateUser(req, res, io, userSockets));
+router.delete("/:id", authMiddleware, adminMiddleware, deleteUser);
+router.post("/loan/assign", authMiddleware, adminMiddleware, assignLoan);
+router.post("/refund", authMiddleware, adminMiddleware, refundUser);
+router.post("/repay-loan", authMiddleware, adminMiddleware, repayLoan);
+router.post("/loan/repay", authMiddleware, adminMiddleware, refundUser);
+router.put("/loan/status", authMiddleware, adminMiddleware, updateLoanStatus);
+router.put("/updateLoan/loanAmount", authMiddleware, adminMiddleware, updateAdminLoanBalance);
+router.post("/upload-excel", authMiddleware, adminMiddleware, upload.single("file"), uploadExcel);
+router.post("/download/:filename", authMiddleware, adminMiddleware, downloadExcel);
+router.put('/:id/suspend', authMiddleware, adminMiddleware, (req, res) => toggleSuspendUser(req, res, io, userSockets));
+
+// Authenticated user routes
+router.get("/loan/:userId", authMiddleware, getLoanBalance);
+router.put('/:userId/updatePassword', authMiddleware, updateUserPassword);
+router.put('/:userId/password', authMiddleware, updateUserPassword);
+router.get('/:userId', authMiddleware, getUserProfile);
+router.put('/:userId/profile', authMiddleware, updateUserProfile);
 
   return router;
 };

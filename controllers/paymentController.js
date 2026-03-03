@@ -1,6 +1,40 @@
 const paymentService = require('../services/paymentService');
 const shopService = require('../services/shopService');
 const crypto = require('crypto');
+const prisma = require('../config/db');
+
+// Atomic order creation - prevents duplicate orders from webhook + verify race condition
+const createOrderIfNotExists = async (externalRef, productId, mobileNumber) => {
+  return await prisma.$transaction(async (tx) => {
+    // Re-check inside transaction to prevent race condition
+    const transaction = await tx.paymentTransaction.findUnique({
+      where: { externalRef }
+    });
+    
+    if (!transaction) {
+      return { created: false, error: 'Transaction not found' };
+    }
+    
+    // If order already linked, return existing
+    if (transaction.orderId) {
+      const existingOrder = await tx.order.findUnique({
+        where: { id: transaction.orderId }
+      });
+      return { created: false, alreadyExists: true, orderId: transaction.orderId, order: existingOrder };
+    }
+    
+    // Create the order
+    const order = await shopService.createShopOrder(productId, mobileNumber, 'Shop Customer');
+    
+    // Link transaction to order atomically
+    await tx.paymentTransaction.update({
+      where: { externalRef },
+      data: { orderId: order.id }
+    });
+    
+    return { created: true, orderId: order.id, order };
+  }, { timeout: 15000 });
+};
 
 // Initialize Paystack payment
 const initializePayment = async (req, res) => {
@@ -76,23 +110,28 @@ const handleWebhook = async (req, res) => {
       return res.status(200).json({ received: true, type: 'referral_order' });
     }
     
+    // Skip topup webhooks - they're handled by topup routes
+    if (req.body.data?.reference?.startsWith('TOPUP-')) {
+      return res.status(200).json({ received: true, type: 'topup' });
+    }
+
     const result = await paymentService.handleWebhook(req.body);
 
-    if (result.success) {
-      // Payment successful - create the order (only for shop orders, not referral orders)
+    if (result.success && result.productId && result.mobileNumber) {
+      // Payment successful - create order atomically (prevents duplicates with verify endpoint)
       try {
-        const order = await shopService.createShopOrder(
+        const orderResult = await createOrderIfNotExists(
+          result.externalRef,
           result.productId,
-          result.mobileNumber,
-          'Shop Customer'
+          result.mobileNumber
         );
-
-        // Link transaction to order
-        await paymentService.linkTransactionToOrder(result.externalRef, order.id);
-
-        console.log('Order created from webhook:', order.id);
+        if (orderResult.created) {
+          console.log('[Webhook] Order created:', orderResult.orderId);
+        } else if (orderResult.alreadyExists) {
+          console.log('[Webhook] Order already exists:', orderResult.orderId);
+        }
       } catch (orderError) {
-        console.error('Order creation error from webhook:', orderError);
+        console.error('[Webhook] Order creation error:', orderError.message);
       }
     }
 
@@ -147,30 +186,28 @@ const verifyPaymentStatus = async (req, res) => {
     }
 
     if (result.success) {
-      // Payment confirmed - create order if not already created
+      // Payment confirmed - create order atomically (prevents duplicates with webhook)
       const transaction = await paymentService.checkPaymentStatus(reference);
       
-      if (!transaction.orderId) {
-        // Try to create order with retry
-        let orderCreated = false;
-        let order = null;
-        let orderError = null;
+      if (!transaction.orderId && transaction.productId && transaction.mobileNumber) {
+        // Atomic order creation with retry
+        let orderResult = null;
+        let lastOrderError = null;
 
         for (let orderAttempt = 1; orderAttempt <= 3; orderAttempt++) {
           try {
-            console.log(`[Payment Verify] Creating order - attempt ${orderAttempt}`);
-            order = await shopService.createShopOrder(
+            console.log(`[Payment Verify] Creating order atomically - attempt ${orderAttempt}`);
+            orderResult = await createOrderIfNotExists(
+              reference,
               transaction.productId,
-              transaction.mobileNumber,
-              'Shop Customer'
+              transaction.mobileNumber
             );
-
-            await paymentService.linkTransactionToOrder(reference, order.id);
-            orderCreated = true;
-            console.log('[Payment Verify] Order created successfully:', order.id);
-            break;
+            if (orderResult.created || orderResult.alreadyExists) {
+              console.log('[Payment Verify] Order result:', orderResult.created ? 'created' : 'already exists', orderResult.orderId);
+              break;
+            }
           } catch (err) {
-            orderError = err;
+            lastOrderError = err;
             console.error(`[Payment Verify] Order creation attempt ${orderAttempt} failed:`, err.message);
             if (orderAttempt < 3) {
               await new Promise(resolve => setTimeout(resolve, 1000));
@@ -178,19 +215,18 @@ const verifyPaymentStatus = async (req, res) => {
           }
         }
 
-        if (orderCreated && order) {
+        if (orderResult && (orderResult.created || orderResult.alreadyExists)) {
           res.json({
             success: true,
             message: 'Payment verified and order placed!',
             status: 'SUCCESS',
             order: {
-              id: order.id,
+              id: orderResult.orderId,
               mobileNumber: transaction.mobileNumber
             }
           });
         } else {
-          console.error('[Payment Verify] All order creation attempts failed:', orderError?.message);
-          // Still return success for payment but flag the order issue
+          console.error('[Payment Verify] All order creation attempts failed:', lastOrderError?.message);
           res.json({
             success: true,
             message: 'Payment verified! Order will be processed shortly.',
@@ -199,7 +235,7 @@ const verifyPaymentStatus = async (req, res) => {
             reference: reference
           });
         }
-      } else {
+      } else if (transaction.orderId) {
         res.json({
           success: true,
           message: 'Payment already verified',
@@ -208,6 +244,15 @@ const verifyPaymentStatus = async (req, res) => {
             id: transaction.orderId,
             mobileNumber: transaction.mobileNumber
           }
+        });
+      } else {
+        // Payment verified but missing product/mobile info
+        res.json({
+          success: true,
+          message: 'Payment verified! Order will be processed shortly.',
+          status: 'SUCCESS',
+          orderPending: true,
+          reference: reference
         });
       }
     } else if (result.pending) {

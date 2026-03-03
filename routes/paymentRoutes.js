@@ -1,5 +1,7 @@
 const express = require('express');
 const paymentController = require('../controllers/paymentController');
+const authMiddleware = require('../middleware/authMiddleware');
+const adminMiddleware = require('../middleware/adminMiddleware');
 
 const router = express.Router();
 
@@ -8,7 +10,7 @@ const router = express.Router();
 // Initialize Paystack payment
 router.post('/initialize', paymentController.initializePayment);
 
-// Paystack webhook callback
+// Paystack webhook callback (must stay public - called by Paystack servers)
 router.post('/webhook', paymentController.handleWebhook);
 
 // Verify payment status (called after redirect from Paystack)
@@ -17,13 +19,9 @@ router.post('/verify', paymentController.verifyPaymentStatus);
 // Check payment status
 router.get('/status/:externalRef', paymentController.checkStatus);
 
-// Get all transactions (admin - should add auth middleware in production)
-router.get('/transactions', paymentController.getAllTransactions);
-
-// Get orphaned payments (successful payments without orders)
-router.get('/orphaned', paymentController.getOrphanedPayments);
-
-// Reconcile orphaned payments - creates orders for successful payments
-router.post('/reconcile', paymentController.reconcilePayments);
+// Admin-only routes - REQUIRE AUTHENTICATION
+router.get('/transactions', authMiddleware, adminMiddleware, paymentController.getAllTransactions);
+router.get('/orphaned', authMiddleware, adminMiddleware, paymentController.getOrphanedPayments);
+router.post('/reconcile', authMiddleware, adminMiddleware, paymentController.reconcilePayments);
 
 module.exports = router;
