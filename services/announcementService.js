@@ -35,7 +35,7 @@ class AnnouncementService {
       const announcements = await prisma.announcement.findMany({
         where: {
           isActive: true,
-          target: { not: 'shop' },
+          target: { notIn: ['shop', 'shop-alert'] },
           OR: [
             { targetAudience: audience.toLowerCase() },
             { targetAudience: 'all' }
@@ -93,7 +93,7 @@ class AnnouncementService {
       const announcements = await prisma.announcement.findMany({
         where: {
           isActive: true,
-          target: { not: 'shop' },
+          target: { notIn: ['shop', 'shop-alert'] },
           OR: [
             { targetAudience: audience.toLowerCase() },
             { targetAudience: 'all' }
