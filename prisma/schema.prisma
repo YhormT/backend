@@ -90,6 +90,7 @@ model Order {
   items        OrderItem[]
 
   @@index([userId], map: "Order_userId_fkey")
+  @@index([userId, createdAt])
   @@map("Order")
 }
 

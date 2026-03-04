@@ -482,16 +482,37 @@ const getOrderStatus = async (options = {}) => {
   };
 };
 
-const getOrderHistory = async (userId) => {
-  return await prisma.order.findMany({
-    where: { userId },
-    include: {
-      items: {
-        include: { product: true }
-      }
-    },
-    orderBy: { createdAt: "desc" }
-  });
+const getOrderHistory = async (userId, { page = 1, limit = 200 } = {}) => {
+  const skip = (page - 1) * limit;
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        userId: true,
+        createdAt: true,
+        status: true,
+        mobileNumber: true,
+        items: {
+          select: {
+            id: true,
+            mobileNumber: true,
+            status: true,
+            quantity: true,
+            updatedAt: true,
+            product: {
+              select: { id: true, name: true, description: true, price: true }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit
+    }),
+    prisma.order.count({ where: { userId } })
+  ]);
+  return { orders, total, page, limit, pages: Math.ceil(total / limit) };
 };
 
 const getUserCompletedOrders = async (userId) => {
