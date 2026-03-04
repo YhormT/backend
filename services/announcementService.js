@@ -171,8 +171,9 @@ class AnnouncementService {
     try {
       const { title, message, priority = 1, createdBy, target = 'login', targetAudience = 'all', isActive = true } = data;
 
-      // Deactivate all previous announcements with the same target and audience if new one is active
-      if (isActive) {
+      // Deactivate previous announcements only for shop-related types (shop alerts & shop banners)
+      // Agent notifications should remain active until manually deactivated by admin
+      if (isActive && (target === 'shop' || target === 'shop-alert')) {
         await prisma.announcement.updateMany({
           where: { 
             isActive: true,
