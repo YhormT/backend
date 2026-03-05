@@ -145,15 +145,13 @@ exports.getOrderHistory = async (req, res) => {
       return res.status(403).json({ error: "You can only view your own order history" });
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 200;
-    const result = await getOrderHistory(userId, { page, limit });
+    const orders = await getOrderHistory(userId);
 
-    if (!result.orders.length) {
+    if (!orders.length) {
       return res.status(404).json({ message: "No order history found" });
     }
 
-    res.json(result.orders);
+    res.json(orders);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
