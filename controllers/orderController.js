@@ -8,7 +8,7 @@ const {
   getOrderHistory,
   updateOrderItemsStatus,
   updateSingleOrderItemStatus,
-  // orderController
+  downloadOrdersForExcel,
 } = require("../services/orderService");
 
 const orderService = require('../services/orderService');
@@ -676,5 +676,20 @@ exports.batchCompleteProcessing = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+}
+
+// Download orders for Excel and update pending to processing
+exports.downloadOrdersForExcel = async (req, res) => {
+  try {
+    const { statusFilter, selectedProduct, selectedDate, sortOrder, sourceFilter, phoneNumberFilter, orderIdFilter, startTime, endTime } = req.query;
+    const result = await downloadOrdersForExcel({
+      statusFilter, selectedProduct, selectedDate, sortOrder,
+      sourceFilter, phoneNumberFilter, orderIdFilter, startTime, endTime
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error in downloadOrdersForExcel:', error);
+    res.status(500).json({ error: error.message });
   }
 }

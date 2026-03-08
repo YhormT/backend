@@ -52,4 +52,7 @@ router.post('/admin/orders-by-ids', authMiddleware, adminMiddleware, orderContro
 // Batch complete all processing orders (requires admin)
 router.post('/admin/batch-complete', authMiddleware, adminMiddleware, orderController.batchCompleteProcessing);
 
+// Download orders for Excel export and update pending to processing (requires admin)
+router.get('/admin/download-excel', authMiddleware, adminMiddleware, orderController.downloadOrdersForExcel);
+
 module.exports = router;
