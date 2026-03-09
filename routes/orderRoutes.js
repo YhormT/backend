@@ -31,6 +31,9 @@ router.post('/admin/process/order', authMiddleware, adminMiddleware, orderContro
 
 router.get('/admin/allorder', authMiddleware, adminMiddleware, orderController.getOrderStatus);
 
+// Download orders for Excel export and update pending to processing (requires admin)
+router.get('/admin/download-excel', authMiddleware, adminMiddleware, orderController.downloadOrdersForExcel);
+
 router.get("/admin/:userId", authMiddleware, orderController.getOrderHistory);
 
 // Get specific order by ID for status sync (requires auth)
@@ -51,8 +54,5 @@ router.post('/admin/orders-by-ids', authMiddleware, adminMiddleware, orderContro
 
 // Batch complete all processing orders (requires admin)
 router.post('/admin/batch-complete', authMiddleware, adminMiddleware, orderController.batchCompleteProcessing);
-
-// Download orders for Excel export and update pending to processing (requires admin)
-router.get('/admin/download-excel', authMiddleware, adminMiddleware, orderController.downloadOrdersForExcel);
 
 module.exports = router;
