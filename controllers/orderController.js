@@ -661,10 +661,13 @@ exports.getOrdersByIds = async (req, res) => {
   }
 }
 
-// Batch complete all processing orders
+// Batch complete all processing orders (respects filters)
 exports.batchCompleteProcessing = async (req, res) => {
   try {
-    const result = await orderService.batchCompleteProcessingOrders();
+    const { selectedProduct, selectedDate, sourceFilter, phoneNumberFilter, orderIdFilter, startTime, endTime } = req.body;
+    const result = await orderService.batchCompleteProcessingOrders({
+      selectedProduct, selectedDate, sourceFilter, phoneNumberFilter, orderIdFilter, startTime, endTime
+    });
     res.json({
       success: true,
       message: `Successfully completed ${result.count} processing orders`,

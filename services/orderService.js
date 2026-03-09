@@ -845,13 +845,102 @@ const orderService = {
     });
   },
 
-  async batchCompleteProcessingOrders() {
-    // Update all Processing order items to Completed
+  async batchCompleteProcessingOrders(filters = {}) {
+    const { selectedProduct, selectedDate, sourceFilter, phoneNumberFilter, orderIdFilter, startTime, endTime } = filters;
+    const hasFilters = selectedProduct || selectedDate || sourceFilter || phoneNumberFilter || orderIdFilter || startTime || endTime;
+
+    if (!hasFilters) {
+      const result = await prisma.orderItem.updateMany({
+        where: { status: 'Processing' },
+        data: { status: 'Completed' }
+      });
+      cache.delete('order_status_counts');
+      cache.delete('order_stats');
+      return { count: result.count };
+    }
+
+    const where = {};
+    const itemsWhere = { status: 'Processing' };
+
+    if (selectedDate) {
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      if (startTime) {
+        const [h, m] = startTime.split(':');
+        startOfDay.setHours(parseInt(h), parseInt(m), 0, 0);
+      }
+      if (endTime) {
+        const [h, m] = endTime.split(':');
+        endOfDay.setHours(parseInt(h), parseInt(m), 59, 999);
+      }
+      where.createdAt = { gte: startOfDay, lte: endOfDay };
+    }
+
+    if (phoneNumberFilter) {
+      const cleanedNumber = phoneNumberFilter.replace(/\D/g, '');
+      const phoneVariants = [cleanedNumber];
+      if (cleanedNumber.startsWith('0') && cleanedNumber.length === 10) {
+        phoneVariants.push(cleanedNumber.substring(1));
+        phoneVariants.push('233' + cleanedNumber.substring(1));
+      } else if (cleanedNumber.startsWith('233') && cleanedNumber.length === 12) {
+        phoneVariants.push('0' + cleanedNumber.substring(3));
+        phoneVariants.push(cleanedNumber.substring(3));
+      } else if (cleanedNumber.length === 9) {
+        phoneVariants.push('0' + cleanedNumber);
+        phoneVariants.push('233' + cleanedNumber);
+      }
+      const phoneConditions = [];
+      phoneVariants.forEach(variant => {
+        phoneConditions.push({ mobileNumber: { contains: variant } });
+        phoneConditions.push({ items: { some: { mobileNumber: { contains: variant } } } });
+      });
+      where.OR = phoneConditions;
+    }
+
+    if (orderIdFilter) {
+      const parsedId = parseInt(orderIdFilter);
+      if (!isNaN(parsedId)) where.id = parsedId;
+    }
+
+    if (selectedProduct) {
+      itemsWhere.product = { name: selectedProduct };
+    }
+
+    if (sourceFilter === 'shop') {
+      where.user = { OR: [{ name: 'shop' }, { email: { contains: 'shop@' } }] };
+    } else if (sourceFilter === 'dashboard') {
+      where.user = { AND: [{ NOT: { name: 'shop' } }, { NOT: { email: { contains: 'shop@' } } }] };
+    }
+
+    where.items = { some: itemsWhere };
+
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        items: {
+          where: itemsWhere,
+          select: { id: true }
+        }
+      }
+    });
+
+    const itemIds = [];
+    for (const order of orders) {
+      for (const item of order.items) {
+        itemIds.push(item.id);
+      }
+    }
+
+    if (itemIds.length === 0) {
+      return { count: 0 };
+    }
+
     const result = await prisma.orderItem.updateMany({
-      where: { status: 'Processing' },
+      where: { id: { in: itemIds } },
       data: { status: 'Completed' }
     });
-    // Invalidate cached status counts so next fetchOrders returns fresh data
     cache.delete('order_status_counts');
     cache.delete('order_stats');
     return { count: result.count };
