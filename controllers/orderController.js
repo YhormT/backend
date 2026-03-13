@@ -9,6 +9,7 @@ const {
   updateOrderItemsStatus,
   updateSingleOrderItemStatus,
   downloadOrdersForExcel,
+  getOrderTrackerData,
 } = require("../services/orderService");
 
 const orderService = require('../services/orderService');
@@ -679,6 +680,18 @@ exports.batchCompleteProcessing = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+}
+
+// Order tracker data with balance tracking and fraud detection
+exports.getOrderTracker = async (req, res) => {
+  try {
+    const { agentId, productId, startDate, endDate, startTime, endTime } = req.query;
+    const result = await getOrderTrackerData({ agentId, productId, startDate, endDate, startTime, endTime });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error in getOrderTracker:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 }
 

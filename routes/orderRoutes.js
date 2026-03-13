@@ -31,6 +31,9 @@ router.post('/admin/process/order', authMiddleware, adminMiddleware, orderContro
 
 router.get('/admin/allorder', authMiddleware, adminMiddleware, orderController.getOrderStatus);
 
+// Order tracker with balance tracking and fraud detection (requires admin)
+router.get('/admin/order-tracker', authMiddleware, adminMiddleware, orderController.getOrderTracker);
+
 // Download orders for Excel export and update pending to processing (requires admin)
 router.get('/admin/download-excel', authMiddleware, adminMiddleware, orderController.downloadOrdersForExcel);
 
