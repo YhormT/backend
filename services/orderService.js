@@ -1224,6 +1224,17 @@ const getOrderTrackerData = async (filters = {}) => {
     txMap[tx.reference] = tx;
   }
 
+  // Fetch referral orders (storefront/Paystack-paid) linked to these orders
+  const referralOrders = orderIds.length > 0 ? await prisma.referralOrder.findMany({
+    where: { orderId: { in: orderIds } },
+    select: { orderId: true, paymentStatus: true, paymentRef: true }
+  }) : [];
+
+  const referralMap = {};
+  for (const ro of referralOrders) {
+    referralMap[ro.orderId] = ro;
+  }
+
   const tableData = [];
   const fraudAlerts = [];
   const networkSummary = {
@@ -1234,6 +1245,8 @@ const getOrderTrackerData = async (filters = {}) => {
 
   for (const order of orders) {
     const tx = txMap[`order:${order.id}`];
+    const referral = referralMap[order.id];
+    const isStorefrontOrder = !!referral;
 
     for (const item of order.items) {
       const productName = (item.productName || item.product?.name || '').toUpperCase();
@@ -1267,17 +1280,27 @@ const getOrderTrackerData = async (filters = {}) => {
         balanceAfter: tx ? tx.balance : null,
         dateTime: order.createdAt,
         network,
-        mobileNumber: item.mobileNumber || order.mobileNumber
+        mobileNumber: item.mobileNumber || order.mobileNumber,
+        isStorefront: isStorefrontOrder,
+        paymentMethod: isStorefrontOrder ? 'Paystack' : 'Wallet'
       };
 
       tableData.push(row);
 
-      if (tx && Math.abs(tx.previousBalance - tx.balance) < 0.01) {
-        fraudAlerts.push({ ...row, reason: 'Balance unchanged after order' });
-      }
-
-      if (!tx) {
-        fraudAlerts.push({ ...row, reason: 'No transaction record found for order' });
+      // Fraud detection logic
+      if (isStorefrontOrder) {
+        // Storefront order paid via Paystack — only flag if payment was NOT verified
+        if (referral.paymentStatus !== 'Paid') {
+          fraudAlerts.push({ ...row, reason: `Storefront order - payment not verified (${referral.paymentStatus})` });
+        }
+      } else {
+        // Wallet-based agent order — flag if balance unchanged or no transaction
+        if (tx && Math.abs(tx.previousBalance - tx.balance) < 0.01) {
+          fraudAlerts.push({ ...row, reason: 'Balance unchanged after order' });
+        }
+        if (!tx) {
+          fraudAlerts.push({ ...row, reason: 'No transaction record found for order' });
+        }
       }
     }
   }
