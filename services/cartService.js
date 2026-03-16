@@ -5,6 +5,7 @@ const { createTransaction } = require('./transactionService');
 const addItemToCart = async (userId, productId, quantity, mobileNumber = null) => {
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new Error("Product not found");
+  if (product.stock <= 0) throw new Error("Product is out of stock");
   
   let cart = await prisma.cart.findUnique({ where: { userId } });
   if (!cart) {

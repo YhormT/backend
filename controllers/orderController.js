@@ -10,6 +10,7 @@ const {
   updateSingleOrderItemStatus,
   downloadOrdersForExcel,
   getOrderTrackerData,
+  cancelOrderItem,
 } = require("../services/orderService");
 
 const orderService = require('../services/orderService');
@@ -709,3 +710,14 @@ exports.downloadOrdersForExcel = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 }
+
+exports.cancelOrderItem = async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const orderItemId = parseInt(req.params.itemId);
+    const result = await cancelOrderItem(userId, orderItemId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};

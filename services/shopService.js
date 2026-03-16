@@ -46,10 +46,6 @@ const createShopOrder = async (productId, mobileNumber, customerName) => {
     throw new Error("Product is not available in shop");
   }
   
-  if (product.stock <= 0) {
-    throw new Error("Product is out of stock");
-  }
-  
   // Create the order
   const order = await prisma.order.create({
     data: {

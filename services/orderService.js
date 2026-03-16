@@ -1308,6 +1308,38 @@ const getOrderTrackerData = async (filters = {}) => {
   return { tableData, networkSummary, fraudAlerts };
 };
 
+const cancelOrderItem = async (userId, orderItemId) => {
+  return await prisma.$transaction(async (tx) => {
+    const item = await tx.orderItem.findUnique({
+      where: { id: orderItemId },
+      include: { order: true, product: true }
+    });
+
+    if (!item) throw new Error("Order item not found");
+    if (item.order.userId !== userId) throw new Error("Unauthorized: This order does not belong to you");
+    if (item.status !== "Pending") throw new Error("Only pending orders can be cancelled");
+
+    // Update item status to Cancelled
+    await tx.orderItem.update({
+      where: { id: orderItemId },
+      data: { status: "Cancelled" }
+    });
+
+    // Refund the agent's wallet
+    const refundAmount = item.productPrice || item.product.price;
+    await createTransaction(
+      userId,
+      refundAmount,
+      "REFUND",
+      `Refund for cancelled order item #${orderItemId} (Order #${item.orderId})`,
+      `cancel:${item.orderId}:${orderItemId}`,
+      tx
+    );
+
+    return { message: "Order cancelled and refund processed", refundAmount };
+  }, { timeout: 15000 });
+};
+
 module.exports = {
   submitCart,
   getAllOrders,
@@ -1320,6 +1352,7 @@ module.exports = {
   updateSingleOrderItemStatus,
   downloadOrdersForExcel,
   getOrderTrackerData,
+  cancelOrderItem,
   createDirectOrder: orderService.createDirectOrder,
   getOrdersByIds: orderService.getOrdersByIds,
   batchCompleteProcessingOrders: orderService.batchCompleteProcessingOrders,

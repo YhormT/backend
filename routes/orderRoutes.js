@@ -49,6 +49,9 @@ router.get('/user/completed/:userId', authMiddleware, orderController.getUserCom
 router.put('/orders/:orderId/status', authMiddleware, adminMiddleware, orderController.updateOrderItemsStatus);
 router.put('/items/:itemId/status', authMiddleware, adminMiddleware, orderController.updateSingleOrderItemStatus);
 
+// Agent: Cancel a pending order item (refunds wallet)
+router.post('/cancel/:userId/:itemId', authMiddleware, orderController.cancelOrderItem);
+
 // Direct order creation from ext_agent system (requires auth)
 router.post('/create-direct', authMiddleware, orderController.createDirectOrder);
 
