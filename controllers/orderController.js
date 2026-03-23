@@ -311,12 +311,11 @@ exports.uploadExcelOrders = async (req, res) => {
       const phoneNumber = row['phone'] ? String(row['phone']).trim() : '';
       const item = row['item'] ? String(row['item']).trim() : '';
       const bundleAmount = row['bundle amount'] ? String(row['bundle amount']).trim() : '';
-      const quantity = row['quantity'] ? parseInt(row['quantity']) : 1;
+      const quantity = 1;
       let rowErrors = [];
       if (!phoneNumber) rowErrors.push('Missing phone');
       if (!item) rowErrors.push('Missing item (e.g: MTN - SUPERAGENT)');
       if (!bundleAmount) rowErrors.push('Missing bundle amount (e.g: 50GB)');
-      if (quantity < 1 || isNaN(quantity)) rowErrors.push('Invalid quantity');
       // Lookup product by item and bundle amount
       let product = await prisma.product.findFirst({
         where: {
@@ -719,5 +718,103 @@ exports.cancelOrderItem = async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+// ==================== ORDER BATCH (ORDER FILES) CONTROLLERS ====================
+
+const orderBatchService = require('../services/orderBatchService');
+
+exports.getPendingCounts = async (req, res) => {
+  try {
+    const counts = await orderBatchService.getPendingCountsByNetwork();
+    res.json({ success: true, counts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exportPendingOrders = async (req, res) => {
+  try {
+    const { network } = req.body;
+    if (!network) return res.status(400).json({ success: false, message: 'Network is required' });
+
+    const adminUserId = req.user.id;
+    const { batch, rows } = await orderBatchService.exportPendingByNetwork(adminUserId, network);
+
+    const XLSX = require('xlsx');
+    const wsData = [['Order ID', 'Item ID', 'Agent', 'Phone', 'Product', 'Bundle', 'Price', 'Qty', 'Status']];
+    for (const row of rows) {
+      wsData.push([row.orderId, row.itemId, row.agent, row.phone, row.product, row.bundle, row.price, row.quantity, row.status]);
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${batch.filename}`);
+    res.send(buffer);
+  } catch (error) {
+    const status = error.message.includes('No pending') ? 404 : 500;
+    res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+exports.getAllBatches = async (req, res) => {
+  try {
+    const batches = await orderBatchService.getAllBatches();
+    res.json({ success: true, batches });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getBatchById = async (req, res) => {
+  try {
+    const batch = await orderBatchService.getBatchById(req.params.batchId);
+    res.json({ success: true, batch });
+  } catch (error) {
+    res.status(404).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateBatchStatus = async (req, res) => {
+  try {
+    const result = await orderBatchService.updateBatchStatus(req.params.batchId, req.body.status);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateBatchOrderItemStatus = async (req, res) => {
+  try {
+    const result = await orderBatchService.updateBatchOrderItemStatus(req.params.batchId, req.params.itemId, req.body.status);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.downloadBatch = async (req, res) => {
+  try {
+    const { batch, rows } = await orderBatchService.getBatchForDownload(req.params.batchId);
+
+    const XLSX = require('xlsx');
+    const wsData = [['Order ID', 'Item ID', 'Agent', 'Phone', 'Product', 'Bundle', 'Price', 'Qty', 'Status']];
+    for (const row of rows) {
+      wsData.push([row.orderId, row.itemId, row.agent, row.phone, row.product, row.bundle, row.price, row.quantity, row.status]);
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${batch.filename}`);
+    res.send(buffer);
+  } catch (error) {
+    res.status(404).json({ success: false, message: error.message });
   }
 };

@@ -37,6 +37,15 @@ router.get('/admin/order-tracker', authMiddleware, adminMiddleware, orderControl
 // Download orders for Excel export and update pending to processing (requires admin)
 router.get('/admin/download-excel', authMiddleware, adminMiddleware, orderController.downloadOrdersForExcel);
 
+// Order Batch (Order Files) routes - must be before /admin/:userId
+router.get('/admin/batches/pending-counts', authMiddleware, adminMiddleware, orderController.getPendingCounts);
+router.post('/admin/batches/export', authMiddleware, adminMiddleware, orderController.exportPendingOrders);
+router.get('/admin/batches', authMiddleware, adminMiddleware, orderController.getAllBatches);
+router.get('/admin/batches/:batchId', authMiddleware, adminMiddleware, orderController.getBatchById);
+router.put('/admin/batches/:batchId/status', authMiddleware, adminMiddleware, orderController.updateBatchStatus);
+router.put('/admin/batches/:batchId/items/:itemId/status', authMiddleware, adminMiddleware, orderController.updateBatchOrderItemStatus);
+router.get('/admin/batches/:batchId/download', authMiddleware, adminMiddleware, orderController.downloadBatch);
+
 router.get("/admin/:userId", authMiddleware, orderController.getOrderHistory);
 
 // Get specific order by ID for status sync (requires auth)
