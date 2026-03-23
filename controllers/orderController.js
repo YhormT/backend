@@ -743,9 +743,12 @@ exports.exportPendingOrders = async (req, res) => {
     const { batch, rows } = await orderBatchService.exportPendingByNetwork(adminUserId, network);
 
     const XLSX = require('xlsx');
-    const wsData = [['Order ID', 'Item ID', 'Agent', 'Phone', 'Product', 'Bundle', 'Price', 'Qty', 'Status']];
+    const wsData = [['Phone Number', 'Data Size']];
     for (const row of rows) {
-      wsData.push([row.orderId, row.itemId, row.agent, row.phone, row.product, row.bundle, row.price, row.quantity, row.status]);
+      let phone = row.phone || '';
+      if (phone.startsWith('233')) phone = '0' + phone.substring(3);
+      const dataSize = (row.bundle || '').replace(/[^0-9.]/g, '');
+      wsData.push([phone, dataSize]);
     }
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -802,9 +805,12 @@ exports.downloadBatch = async (req, res) => {
     const { batch, rows } = await orderBatchService.getBatchForDownload(req.params.batchId);
 
     const XLSX = require('xlsx');
-    const wsData = [['Order ID', 'Item ID', 'Agent', 'Phone', 'Product', 'Bundle', 'Price', 'Qty', 'Status']];
+    const wsData = [['Phone Number', 'Data Size']];
     for (const row of rows) {
-      wsData.push([row.orderId, row.itemId, row.agent, row.phone, row.product, row.bundle, row.price, row.quantity, row.status]);
+      let phone = row.phone || '';
+      if (phone.startsWith('233')) phone = '0' + phone.substring(3);
+      const dataSize = (row.bundle || '').replace(/[^0-9.]/g, '');
+      wsData.push([phone, dataSize]);
     }
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(wsData);
