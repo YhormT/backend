@@ -5,11 +5,11 @@ const { createTransaction } = require("./transactionService");
  * Get counts of pending order items grouped by network (for export UI)
  */
 const getPendingCountsByNetwork = async () => {
-  // Include product relation as fallback for items without productName snapshot
+  // Find all pending OrderItems (status-based, not batchId-based, since an order
+  // can have items from multiple networks and only some may be exported)
   const items = await prisma.orderItem.findMany({
     where: {
-      status: "Pending",
-      order: { batchId: null }
+      status: "Pending"
     },
     select: { productName: true, productPrice: true, quantity: true, product: { select: { name: true, price: true } } }
   });
@@ -35,11 +35,11 @@ const getPendingCountsByNetwork = async () => {
  */
 const exportPendingByNetwork = async (adminUserId, network) => {
   return await prisma.$transaction(async (tx) => {
-    // Use OR to match both productName snapshot and product.name (fallback for old orders)
+    // Find pending items matching the network (status-based filtering, not batchId-based,
+    // since an order can have items from multiple networks and only some may be exported)
     const pendingItems = await tx.orderItem.findMany({
       where: {
         status: "Pending",
-        order: { batchId: null },
         OR: [
           { productName: { startsWith: network.toUpperCase() } },
           { productName: null, product: { name: { startsWith: network.toUpperCase() } } },
@@ -76,9 +76,9 @@ const exportPendingByNetwork = async (adminUserId, network) => {
       }
     });
 
-    // Link orders to the batch
+    // Link orders to the batch (only if not already linked to another batch)
     await tx.order.updateMany({
-      where: { id: { in: orderIds } },
+      where: { id: { in: orderIds }, batchId: null },
       data: { batchId: batch.id }
     });
 
@@ -123,7 +123,7 @@ const getAllBatches = async () => {
         include: {
           user: { select: { id: true, name: true } },
           items: {
-            select: { id: true, status: true, productPrice: true, quantity: true }
+            select: { id: true, status: true, productPrice: true, quantity: true, productName: true, product: { select: { name: true } } }
           }
         }
       }
@@ -134,9 +134,12 @@ const getAllBatches = async () => {
     let totalItems = 0;
     let totalPrice = 0;
     let statusCounts = { Pending: 0, Processing: 0, Completed: 0, Cancelled: 0 };
+    const batchNetwork = (batch.network || "").toUpperCase();
 
     for (const order of batch.orders) {
       for (const item of order.items) {
+        const itemNetwork = (item.productName || item.product?.name || "").toUpperCase();
+        if (batchNetwork && !itemNetwork.startsWith(batchNetwork)) continue;
         totalItems++;
         totalPrice += (item.productPrice || 0) * item.quantity;
         const s = item.status === "Canceled" ? "Cancelled" : item.status;
@@ -199,6 +202,18 @@ const getBatchById = async (batchId) => {
   });
 
   if (!batch) throw new Error("Order batch not found");
+
+  // Filter items to only include those matching the batch network
+  const batchNetwork = (batch.network || "").toUpperCase();
+  if (batchNetwork) {
+    for (const order of batch.orders) {
+      order.items = order.items.filter(item => {
+        const itemNetwork = (item.productName || item.product?.name || "").toUpperCase();
+        return itemNetwork.startsWith(batchNetwork);
+      });
+    }
+  }
+
   return batch;
 };
 
@@ -223,10 +238,19 @@ const updateBatchStatus = async (batchId, newStatus) => {
 
     if (!batch) throw new Error("Order batch not found");
 
+    const batchNetwork = (batch.network || "").toUpperCase();
     let totalRefund = 0;
     let updatedCount = 0;
 
     for (const order of batch.orders) {
+      // Filter items to only those matching the batch network
+      const matchingItems = order.items.filter(item => {
+        const itemNetwork = (item.productName || item.product?.name || "").toUpperCase();
+        return !batchNetwork || itemNetwork.startsWith(batchNetwork);
+      });
+
+      if (matchingItems.length === 0) continue;
+
       if (newStatus === "Cancelled") {
         const refundReference = `batch_refund:${batchId}:order:${order.id}`;
         const existingRefund = await tx.transaction.findFirst({
@@ -235,7 +259,7 @@ const updateBatchStatus = async (batchId, newStatus) => {
 
         if (!existingRefund) {
           let orderRefund = 0;
-          for (const item of order.items) {
+          for (const item of matchingItems) {
             if (item.status !== "Cancelled" && item.status !== "Canceled") {
               orderRefund += (item.productPrice || item.product.price) * item.quantity;
             }
@@ -249,8 +273,9 @@ const updateBatchStatus = async (batchId, newStatus) => {
         }
       }
 
+      const matchingItemIds = matchingItems.map(item => item.id);
       const result = await tx.orderItem.updateMany({
-        where: { orderId: order.id },
+        where: { id: { in: matchingItemIds } },
         data: { status: newStatus }
       });
       updatedCount += result.count;
@@ -329,9 +354,12 @@ const getBatchForDownload = async (batchId) => {
 
   if (!batch) throw new Error("Batch not found");
 
+  const batchNetwork = (batch.network || "").toUpperCase();
   const rows = [];
   for (const order of batch.orders) {
     for (const item of order.items) {
+      const itemNetwork = (item.productName || item.product?.name || "").toUpperCase();
+      if (batchNetwork && !itemNetwork.startsWith(batchNetwork)) continue;
       rows.push({
         orderId: order.id,
         itemId: item.id,
