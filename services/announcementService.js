@@ -1,13 +1,13 @@
 const prisma = require("../config/db");
 
 class AnnouncementService {
-  // Get all active announcements (for public display)
+  // Get all active announcements (for public display)  
   async getActiveAnnouncements(target = null) {
     try {
       const whereClause = {
         isActive: true
       };
-      
+
       // Filter by target if specified
       if (target) {
         whereClause.OR = [
@@ -51,7 +51,7 @@ class AnnouncementService {
           { createdAt: 'desc' }
         ]
       });
-      
+
       // Add isRead flag for each announcement
       return announcements.map(a => ({
         ...a,
@@ -101,7 +101,7 @@ class AnnouncementService {
         },
         select: { id: true }
       });
-      
+
       const readAnnouncements = await prisma.notificationRead.findMany({
         where: {
           userId: parseInt(userId),
@@ -109,10 +109,10 @@ class AnnouncementService {
         },
         select: { announcementId: true }
       });
-      
+
       const readIds = new Set(readAnnouncements.map(r => r.announcementId));
       const unreadCount = announcements.filter(a => !readIds.has(a.id)).length;
-      
+
       return unreadCount;
     } catch (error) {
       throw new Error(`Failed to get unread count: ${error.message}`);
@@ -175,7 +175,7 @@ class AnnouncementService {
       // Agent notifications should remain active until manually deactivated by admin
       if (isActive && (target === 'shop' || target === 'shop-alert')) {
         await prisma.announcement.updateMany({
-          where: { 
+          where: {
             isActive: true,
             target: target,
             targetAudience: targetAudience
@@ -209,7 +209,7 @@ class AnnouncementService {
     try {
       const { title, message, isActive, priority } = data;
 
-      
+
       const announcement = await prisma.announcement.update({
         where: { id },
         data: {
@@ -219,7 +219,7 @@ class AnnouncementService {
           ...(priority !== undefined && { priority })
         }
       });
-      
+
       return announcement;
     } catch (error) {
       throw new Error(`Failed to update announcement: ${error.message}`);
@@ -244,11 +244,11 @@ class AnnouncementService {
       const announcement = await prisma.announcement.findUnique({
         where: { id }
       });
-      
+
       if (!announcement) {
         throw new Error('Announcement not found');
       }
-      
+
       return announcement;
     } catch (error) {
       throw new Error(`Failed to fetch announcement: ${error.message}`);
@@ -261,18 +261,18 @@ class AnnouncementService {
       const announcement = await prisma.announcement.findUnique({
         where: { id }
       });
-      
+
       if (!announcement) {
         throw new Error('Announcement not found');
       }
-      
+
       const updated = await prisma.announcement.update({
         where: { id },
         data: {
           isActive: !announcement.isActive
         }
       });
-      
+
       return updated;
     } catch (error) {
       throw new Error(`Failed to toggle announcement status: ${error.message}`);

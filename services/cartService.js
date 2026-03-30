@@ -1,23 +1,22 @@
 const prisma = require('../config/db');
 const { createTransaction } = require('./transactionService');
 
-
 const addItemToCart = async (userId, productId, quantity, mobileNumber = null) => {
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new Error("Product not found");
   if (product.stock <= 0) throw new Error("Product is out of stock");
-  
+
   let cart = await prisma.cart.findUnique({ where: { userId } });
   if (!cart) {
     cart = await prisma.cart.create({
       data: { userId },
     });
   }
-   
+
   // Calculate total price for this cart item using effective price (promo if active)
   const effectivePrice = (product.usePromoPrice && product.promoPrice != null) ? product.promoPrice : product.price;
   const totalPrice = effectivePrice * quantity;
-  
+
   // Create cart item
   const cartItem = await prisma.cartItem.create({
     data: {
@@ -28,7 +27,7 @@ const addItemToCart = async (userId, productId, quantity, mobileNumber = null) =
       mobileNumber,
     },
   });
-  
+
   return cartItem;
 };
 
@@ -56,12 +55,12 @@ const removeItemFromCart = async (cartItemId, retries = 3) => {
           product: true
         }
       });
-      
+
       if (!cartItem) throw new Error("Cart item not found");
-      
+
       // Delete the cart item
       const deletedItem = await prisma.cartItem.delete({ where: { id: cartItemId } });
-      
+
       return deletedItem;
     } catch (error) {
       // P2025 = record not found (already deleted by submitCart)
