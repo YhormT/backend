@@ -149,11 +149,7 @@ exports.getOrderHistory = async (req, res) => {
 
     const orders = await getOrderHistory(userId);
 
-    if (!orders.length) {
-      return res.status(404).json({ message: "No order history found" });
-    }
-
-    res.json(orders);
+    res.json(orders || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
