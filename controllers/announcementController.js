@@ -244,6 +244,17 @@ class AnnouncementController {
     }
   }
 
+  // Get product card messages by network (public)
+  async getProductCardMessages(req, res) {
+    try {
+      const { network } = req.query;
+      const messages = await announcementService.getProductCardMessages(network);
+      res.status(200).json({ success: true, data: messages });
+    } catch (error) {
+      res.status(500).json({ success: false, data: [] });
+    }
+  }
+
   // Toggle announcement status (Admin only)
   async toggleAnnouncementStatus(req, res) {
     try {

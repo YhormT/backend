@@ -255,6 +255,34 @@ class AnnouncementService {
     }
   }
 
+  // Get product card messages by network
+  async getProductCardMessages(network = null) {
+    try {
+      const whereClause = {
+        isActive: true,
+        target: 'product-card'
+      };
+
+      if (network) {
+        whereClause.OR = [
+          { targetAudience: network.toLowerCase() },
+          { targetAudience: 'all' }
+        ];
+      }
+
+      const announcements = await prisma.announcement.findMany({
+        where: whereClause,
+        orderBy: [
+          { priority: 'desc' },
+          { createdAt: 'desc' }
+        ]
+      });
+      return announcements;
+    } catch (error) {
+      throw new Error(`Failed to fetch product card messages: ${error.message}`);
+    }
+  }
+
   // Toggle announcement status
   async toggleAnnouncementStatus(id) {
     try {

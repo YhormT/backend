@@ -11,6 +11,7 @@ const adminMiddleware = require('../middleware/adminMiddleware'); // Your admin 
 router.get('/active', announcementController.getActiveAnnouncements);
 router.get('/shop-alert', announcementController.getShopAlert);
 router.get('/shop', announcementController.getShopAnnouncements);
+router.get('/product-card', announcementController.getProductCardMessages);
 router.get('/audience/:audience', announcementController.getAnnouncementsForAudience);
 router.get('/unread/:audience', announcementController.getUnreadCount);
 router.post('/read/:announcementId', announcementController.markAsRead);

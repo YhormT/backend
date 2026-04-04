@@ -211,3 +211,44 @@ const reconcileOrphanedPayments = async () => {
 
 setInterval(reconcileOrphanedPayments, 5 * 60 * 1000);
 setTimeout(reconcileOrphanedPayments, 30 * 1000);
+
+// Auto-delete completed shop orders after 72 hours
+const prisma = require('./config/db');
+const cleanupCompletedShopOrders = async () => {
+  try {
+    const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    
+    // Find the shop user
+    const shopUser = await prisma.user.findUnique({ where: { email: 'shop@kelishub.com' } });
+    if (!shopUser) return;
+
+    // Find completed shop orders older than 72 hours
+    const oldOrders = await prisma.order.findMany({
+      where: {
+        userId: shopUser.id,
+        status: 'Completed',
+        createdAt: { lt: seventyTwoHoursAgo }
+      },
+      select: { id: true }
+    });
+
+    if (oldOrders.length === 0) return;
+
+    const orderIds = oldOrders.map(o => o.id);
+
+    // Delete order items first, then orders
+    await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+    const result = await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+
+    if (result.count > 0) {
+      console.log(`[Shop Cleanup] Deleted ${result.count} completed shop orders older than 72 hours`);
+    }
+  } catch (error) {
+    console.error('[Shop Cleanup] Error:', error.message);
+  }
+};
+
+// Run cleanup every hour
+setInterval(cleanupCompletedShopOrders, 60 * 60 * 1000);
+// Initial run after 60 seconds
+setTimeout(cleanupCompletedShopOrders, 60 * 1000);

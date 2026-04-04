@@ -96,7 +96,7 @@ const updateUser = async (req, res, io, userSockets) => {
 };
 
 // Admin adds loan to user  -- Godfrey
-const assignLoan = async (req, res) => {
+const assignLoan = async (req, res, io, userSockets) => {
   const { userId, amount } = req.body;
   try {
     // Convert amount to number
@@ -104,7 +104,21 @@ const assignLoan = async (req, res) => {
     
     // Use the dedicated loan assignment service
     const user = await userService.assignLoan(userId, loanAmount);
-    
+
+    // Emit real-time balance update to the agent
+    if (io && userSockets) {
+      const socketId = userSockets.get(String(userId)) || userSockets.get(userId);
+      if (socketId) {
+        io.to(socketId).emit('balance-updated', {
+          loanBalance: user.loanBalance,
+          adminLoanBalance: user.adminLoanBalance,
+          hasLoan: user.hasLoan,
+          type: 'LOAN_ASSIGNMENT',
+          amount: loanAmount
+        });
+      }
+    }
+
     res.json({ 
       message: "Loan assigned successfully",
       user 
@@ -114,10 +128,25 @@ const assignLoan = async (req, res) => {
   }
 };
 // Dedicated refund endpoint for wallet refunds
-const refundUser = async (req, res) => {
+const refundUser = async (req, res, io, userSockets) => {
   const { userId, amount, refundReference } = req.body;
   try {
     const user = await userService.refundUser(userId, Number(amount), refundReference);
+
+    // Emit real-time balance update to the agent
+    if (io && userSockets) {
+      const socketId = userSockets.get(String(userId)) || userSockets.get(userId);
+      if (socketId) {
+        io.to(socketId).emit('balance-updated', {
+          loanBalance: user.loanBalance,
+          adminLoanBalance: user.adminLoanBalance,
+          hasLoan: user.hasLoan,
+          type: 'REFUND',
+          amount: Number(amount)
+        });
+      }
+    }
+
     res.json({ message: "Refund added successfully", user });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -470,12 +499,16 @@ const toggleSuspendUser = async (req, res, io, userSockets) => {
       data: { isSuspended },
     });
 
-    // If suspending, force-logout the user via socket
-    if (isSuspended) {
-      const socketId = userSockets.get(String(id)) || userSockets.get(id);
-      if (socketId) {
-        io.to(socketId).emit('force-logout', {
+    // Emit real-time suspension status change to the user
+    const socketId = userSockets.get(String(id)) || userSockets.get(id);
+    if (socketId) {
+      if (isSuspended) {
+        io.to(socketId).emit('account-suspended', {
           message: 'Your account has been suspended by an administrator. Please contact admin for assistance.'
+        });
+      } else {
+        io.to(socketId).emit('account-unsuspended', {
+          message: 'Your account has been reactivated by an administrator.'
         });
       }
     }

@@ -80,12 +80,43 @@ class SmsService {
   // Find SMS by reference
   async findSmsByReference(reference) {
     try {
-      return await prisma.smsMessage.findFirst({
+      // Normalize: trim whitespace and remove non-alphanumeric chars
+      const cleanRef = String(reference).trim().replace(/[^a-zA-Z0-9]/g, '');
+      
+      if (!cleanRef) return null;
+
+      // 1. Try exact match first
+      let sms = await prisma.smsMessage.findFirst({
         where: {
-          reference: reference, // Remove toUpperCase() since it's numeric
+          reference: cleanRef,
           isProcessed: false
-        }
+        },
+        orderBy: { createdAt: 'desc' }
       });
+      if (sms) return sms;
+
+      // 2. Try contains match (handles partial reference in DB)
+      sms = await prisma.smsMessage.findFirst({
+        where: {
+          reference: { contains: cleanRef },
+          isProcessed: false
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (sms) return sms;
+
+      // 3. Try searching the raw message text for the reference
+      sms = await prisma.smsMessage.findFirst({
+        where: {
+          message: { contains: cleanRef },
+          isProcessed: false,
+          amount: { not: null }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (sms) return sms;
+
+      return null;
     } catch (error) {
       console.error("Error finding SMS by reference:", error);
       throw new Error(`Failed to find SMS by reference: ${error.message}`);

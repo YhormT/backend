@@ -201,13 +201,47 @@ const verifyTopupPayment = async (reference) => {
           prismaTx
         );
 
+        // Auto-deduct active loan from top-up
+        let loanDeducted = 0;
+        const freshUser = await prismaTx.user.findUnique({
+          where: { id: topUp.userId },
+          select: { adminLoanBalance: true, loanBalance: true, hasLoan: true }
+        });
+        if (freshUser && freshUser.hasLoan && freshUser.adminLoanBalance > 0) {
+          loanDeducted = Math.min(topUp.amount, freshUser.adminLoanBalance);
+          const newAdminLoan = freshUser.adminLoanBalance - loanDeducted;
+          const newLoanBalance = freshUser.loanBalance - loanDeducted;
+          await prismaTx.user.update({
+            where: { id: topUp.userId },
+            data: {
+              loanBalance: newLoanBalance,
+              adminLoanBalance: newAdminLoan,
+              hasLoan: newAdminLoan > 0
+            }
+          });
+          await prismaTx.transaction.create({
+            data: {
+              userId: topUp.userId,
+              amount: -loanDeducted,
+              balance: newLoanBalance,
+              previousBalance: freshUser.loanBalance,
+              type: 'LOAN_AUTO_DEDUCTION',
+              description: `Auto loan deduction of GHS ${loanDeducted} from top-up. Remaining loan: GHS ${newAdminLoan.toFixed(2)}`,
+              reference: `topup:${topUp.id}`
+            }
+          });
+        }
+
         return {
           success: true,
           topupId: topUp.id,
           amount: topUp.amount,
-          newBalance: transaction.balance,
+          newBalance: transaction.balance - loanDeducted,
+          loanDeducted,
           reference,
-          message: 'Top-up successful! Wallet credited.'
+          message: loanDeducted > 0
+            ? `Top-up successful! GHS ${loanDeducted.toFixed(2)} auto-deducted for loan repayment.`
+            : 'Top-up successful! Wallet credited.'
         };
       }, { timeout: 15000 });
 
@@ -352,8 +386,11 @@ const deleteTopup = async (topupId) => {
 // Verify top-up using Transaction ID (SMS verification)
 const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
   try {
+    // Normalize: trim whitespace and remove non-alphanumeric chars
+    const cleanRef = String(referenceId).trim().replace(/[^a-zA-Z0-9]/g, '');
+
     // Find SMS message with this reference
-    const smsMessage = await smsService.findSmsByReference(referenceId);
+    const smsMessage = await smsService.findSmsByReference(cleanRef);
 
     if (!smsMessage) {
       throw new Error("Invalid or already used transaction ID");
@@ -363,13 +400,18 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
       throw new Error("Amount not found in SMS. Please contact support.");
     }
 
-    // Check if reference already exists in TopUp table
+    // Check if reference already exists in TopUp table (check both user input and SMS reference)
     const existingTopUp = await prisma.topUp.findFirst({
-      where: { referenceId }
+      where: {
+        OR: [
+          { referenceId: cleanRef },
+          ...(smsMessage.reference && smsMessage.reference !== cleanRef ? [{ referenceId: smsMessage.reference }] : [])
+        ]
+      }
     });
 
     if (existingTopUp) {
-      throw new Error(`Transaction ID ${referenceId} has already been used.`);
+      throw new Error(`Transaction ID ${cleanRef} has already been used.`);
     }
 
     // Check if user exists
@@ -408,13 +450,47 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
       // 3. Mark the SMS as processed
       await smsService.markSmsAsProcessed(smsMessage.id, prismaTx);
 
+      // 4. Auto-deduct active loan from top-up
+      let loanDeducted = 0;
+      const freshUser = await prismaTx.user.findUnique({
+        where: { id: parseInt(userId) },
+        select: { adminLoanBalance: true, loanBalance: true, hasLoan: true }
+      });
+      if (freshUser && freshUser.hasLoan && freshUser.adminLoanBalance > 0) {
+        loanDeducted = Math.min(smsMessage.amount, freshUser.adminLoanBalance);
+        const newAdminLoan = freshUser.adminLoanBalance - loanDeducted;
+        const newLoanBalance = freshUser.loanBalance - loanDeducted;
+        await prismaTx.user.update({
+          where: { id: parseInt(userId) },
+          data: {
+            loanBalance: newLoanBalance,
+            adminLoanBalance: newAdminLoan,
+            hasLoan: newAdminLoan > 0
+          }
+        });
+        await prismaTx.transaction.create({
+          data: {
+            userId: parseInt(userId),
+            amount: -loanDeducted,
+            balance: newLoanBalance,
+            previousBalance: freshUser.loanBalance,
+            type: 'LOAN_AUTO_DEDUCTION',
+            description: `Auto loan deduction of GHS ${loanDeducted} from top-up. Remaining loan: GHS ${newAdminLoan.toFixed(2)}`,
+            reference: `topup:${topUp.id}`
+          }
+        });
+      }
+
       return {
         success: true,
         amount: smsMessage.amount,
-        newBalance: transaction.balance,
+        newBalance: transaction.balance - loanDeducted,
+        loanDeducted,
         reference: referenceId,
         topUpId: topUp.id,
-        message: "Top-up successful!"
+        message: loanDeducted > 0
+          ? `Top-up successful! GHS ${loanDeducted.toFixed(2)} auto-deducted for loan repayment.`
+          : "Top-up successful!"
       };
     }, { timeout: 15000 });
     // --- End Atomic Transaction ---
