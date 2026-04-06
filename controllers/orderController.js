@@ -14,7 +14,30 @@ const {
 } = require("../services/orderService");
 
 const orderService = require('../services/orderService');
+const prisma = require('../config/db');
 const path = require('path');
+
+// Helper: emit balance-updated WebSocket event to a specific user after refund
+const emitBalanceUpdate = async (userId) => {
+  try {
+    const { io, userSockets } = require('../index');
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+      select: { loanBalance: true, adminLoanBalance: true, hasLoan: true }
+    });
+    if (user && io && userSockets) {
+      const socketId = userSockets.get(String(userId)) || userSockets.get(userId);
+      if (socketId) {
+        io.to(socketId).emit('balance-updated', {
+          loanBalance: user.loanBalance,
+          adminLoanBalance: user.adminLoanBalance,
+          hasLoan: user.hasLoan,
+          type: 'REFUND'
+        });
+      }
+    }
+  } catch (e) { /* socket emit is best-effort */ }
+};
 
 exports.submitCart = async (req, res) => {
   try {
@@ -106,6 +129,10 @@ exports.processOrderItem = async (req, res) => {
   const { orderItemId, status } = req.body;
   try {
     const updatedItem = await processOrderItem(orderItemId, status);
+    // Emit balance update if refund occurred
+    if (["Cancelled", "Canceled"].includes(status) && updatedItem?.order?.userId) {
+      await emitBalanceUpdate(updatedItem.order.userId);
+    }
     res.json({ message: "Order item status updated", updatedItem });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -183,6 +210,13 @@ exports.updateOrderItemsStatus = async (req, res) => {
     }
     
     const result = await updateOrderItemsStatus(orderId, status);
+    // Emit balance update if refund occurred
+    if (["Cancelled", "Canceled"].includes(status)) {
+      try {
+        const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) }, select: { userId: true } });
+        if (order?.userId) await emitBalanceUpdate(order.userId);
+      } catch (e) { /* best-effort */ }
+    }
     return res.status(200).json(result);
   } catch (error) {
     console.error("Controller error:", error);
@@ -215,6 +249,13 @@ exports.updateSingleOrderItemStatus = async (req, res) => {
     }
     
     const result = await updateSingleOrderItemStatus(itemId, status);
+    // Emit balance update if refund occurred
+    if (["Cancelled", "Canceled"].includes(status)) {
+      try {
+        const item = await prisma.orderItem.findUnique({ where: { id: parseInt(itemId) }, include: { order: { select: { userId: true } } } });
+        if (item?.order?.userId) await emitBalanceUpdate(item.order.userId);
+      } catch (e) { /* best-effort */ }
+    }
     return res.status(200).json(result);
   } catch (error) {
     console.error("Controller error:", error);
@@ -711,6 +752,8 @@ exports.cancelOrderItem = async (req, res) => {
     const userId = parseInt(req.params.userId);
     const orderItemId = parseInt(req.params.itemId);
     const result = await cancelOrderItem(userId, orderItemId);
+    // Emit balance update after refund
+    await emitBalanceUpdate(userId);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -782,6 +825,17 @@ exports.getBatchById = async (req, res) => {
 exports.updateBatchStatus = async (req, res) => {
   try {
     const result = await orderBatchService.updateBatchStatus(req.params.batchId, req.body.status);
+    // Emit balance update to all affected users if refund occurred
+    if (["Cancelled", "Canceled"].includes(req.body.status)) {
+      try {
+        const batchItems = await prisma.orderItem.findMany({
+          where: { batchId: parseInt(req.params.batchId) },
+          include: { order: { select: { userId: true } } }
+        });
+        const userIds = [...new Set(batchItems.map(i => i.order?.userId).filter(Boolean))];
+        for (const uid of userIds) await emitBalanceUpdate(uid);
+      } catch (e) { /* best-effort */ }
+    }
     res.json(result);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -791,6 +845,13 @@ exports.updateBatchStatus = async (req, res) => {
 exports.updateBatchOrderItemStatus = async (req, res) => {
   try {
     const result = await orderBatchService.updateBatchOrderItemStatus(req.params.batchId, req.params.itemId, req.body.status);
+    // Emit balance update if refund occurred
+    if (["Cancelled", "Canceled"].includes(req.body.status)) {
+      try {
+        const item = await prisma.orderItem.findUnique({ where: { id: parseInt(req.params.itemId) }, include: { order: { select: { userId: true } } } });
+        if (item?.order?.userId) await emitBalanceUpdate(item.order.userId);
+      } catch (e) { /* best-effort */ }
+    }
     res.json(result);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
