@@ -123,6 +123,43 @@ class SmsService {
     }
   }
   
+  // Find SMS by reference regardless of processed status
+  async findSmsByReferenceAny(reference) {
+    try {
+      const cleanRef = String(reference).trim().replace(/[^a-zA-Z0-9]/g, '');
+      if (!cleanRef) return null;
+
+      // 1. Try exact match first
+      let sms = await prisma.smsMessage.findFirst({
+        where: { reference: cleanRef },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (sms) return sms;
+
+      // 2. Try contains match
+      sms = await prisma.smsMessage.findFirst({
+        where: { reference: { contains: cleanRef } },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (sms) return sms;
+
+      // 3. Try searching the raw message text
+      sms = await prisma.smsMessage.findFirst({
+        where: {
+          message: { contains: cleanRef },
+          amount: { not: null }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (sms) return sms;
+
+      return null;
+    } catch (error) {
+      console.error("Error finding SMS by reference (any):", error);
+      throw new Error(`Failed to find SMS by reference: ${error.message}`);
+    }
+  }
+
   // Mark SMS as processed
   async markSmsAsProcessed(smsId, prismaTx = null) {
     const prismaClient = prismaTx || prisma;

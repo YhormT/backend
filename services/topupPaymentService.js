@@ -389,18 +389,24 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
     // Normalize: trim whitespace and remove non-alphanumeric chars
     const cleanRef = String(referenceId).trim().replace(/[^a-zA-Z0-9]/g, '');
 
-    // Find SMS message with this reference
-    const smsMessage = await smsService.findSmsByReference(cleanRef);
+    // Step 1: Find SMS message regardless of processed status
+    const smsMessage = await smsService.findSmsByReferenceAny(cleanRef);
 
+    // Step 2: If not found at all → invalid ID
     if (!smsMessage) {
-      throw new Error("Invalid or already used transaction ID");
+      throw new Error("Invalid transaction ID. Please check the transaction ID and try again.");
+    }
+
+    // Step 3: If found but already processed → already used
+    if (smsMessage.isProcessed) {
+      throw new Error("This transaction ID has already been used.");
     }
 
     if (!smsMessage.amount) {
       throw new Error("Amount not found in SMS. Please contact support.");
     }
 
-    // Check if reference already exists in TopUp table (check both user input and SMS reference)
+    // Step 4: Check if reference already exists in TopUp table
     const existingTopUp = await prisma.topUp.findFirst({
       where: {
         OR: [
@@ -411,7 +417,7 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
     });
 
     if (existingTopUp) {
-      throw new Error(`Transaction ID ${cleanRef} has already been used.`);
+      throw new Error("This transaction ID has already been used.");
     }
 
     // Check if user exists
