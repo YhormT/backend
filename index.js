@@ -252,3 +252,13 @@ const cleanupCompletedShopOrders = async () => {
 setInterval(cleanupCompletedShopOrders, 60 * 60 * 1000);
 // Initial run after 60 seconds
 setTimeout(cleanupCompletedShopOrders, 60 * 1000);
+
+// Auto-delete stale pending referral orders (>24h) — run hourly
+const storefrontService = require('./services/storefrontService');
+setInterval(() => {
+  storefrontService.cleanupStalePendingReferrals().catch(() => {});
+}, 60 * 60 * 1000);
+// Initial run after 90 seconds
+setTimeout(() => {
+  storefrontService.cleanupStalePendingReferrals().catch(() => {});
+}, 90 * 1000);

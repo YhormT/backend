@@ -498,8 +498,11 @@ const getOrderHistory = async (userId) => {
           status: true,
           quantity: true,
           updatedAt: true,
+          productPrice: true,
+          productName: true,
+          productDescription: true,
           product: {
-            select: { id: true, name: true, description: true, price: true }
+            select: { id: true, name: true, description: true, price: true, promoPrice: true, usePromoPrice: true }
           }
         }
       }
@@ -547,7 +550,7 @@ const updateSingleOrderItemStatus = async (itemId, newStatus) => {
         });
         
         if (!existingRefund) {
-          const refundAmount = item.product.price * item.quantity;
+          const refundAmount = (item.productPrice != null ? item.productPrice : item.product.price) * item.quantity;
           
           if (refundAmount > 0) {
             await createTransaction(
@@ -613,7 +616,7 @@ const updateOrderItemsStatus = async (orderId, newStatus) => {
           
           let totalOrderAmount = 0;
           for (const item of items) {
-            totalOrderAmount += item.product.price * item.quantity;
+            totalOrderAmount += (item.productPrice != null ? item.productPrice : item.product.price) * item.quantity;
           }
           
           // Find the original order transaction to get the amount that was deducted

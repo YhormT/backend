@@ -483,6 +483,9 @@ const verifyReferralPayment = async (reference) => {
 
 // Get agent's referral orders and commission summary
 const getAgentReferralSummary = async (agentId) => {
+  // Fire-and-forget: clean stale pending referrals so agents don't see dead orders
+  cleanupStalePendingReferrals().catch(() => {});
+
   const referralOrders = await prisma.referralOrder.findMany({
     where: { agentId: parseInt(agentId) },
     include: {
@@ -514,6 +517,9 @@ const getAgentReferralSummary = async (agentId) => {
 
 // Get all referral orders (for admin)
 const getAllReferralOrders = async (filters = {}) => {
+  // Fire-and-forget: clean stale pending referrals before returning admin view
+  cleanupStalePendingReferrals().catch(() => {});
+
   const where = {};
   
   if (filters.agentId) where.agentId = parseInt(filters.agentId);
@@ -714,6 +720,30 @@ const getWeeklyCommissionSummary = async () => {
   };
 };
 
+// ==================== STALE REFERRAL ORDER CLEANUP ====================
+// Delete referral orders stuck in 'Pending' payment status for more than 24 hours.
+// These represent customers who initiated payment but never completed on Paystack.
+// Never touches Paid/Failed orders or any that were already linked to a real Order.
+const cleanupStalePendingReferrals = async () => {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const result = await prisma.referralOrder.deleteMany({
+      where: {
+        paymentStatus: 'Pending',
+        orderId: null,
+        createdAt: { lt: cutoff }
+      }
+    });
+    if (result.count > 0) {
+      console.log(`[Referral Cleanup] Deleted ${result.count} stale pending referral order(s) older than 24h`);
+    }
+    return result.count;
+  } catch (error) {
+    console.error('[Referral Cleanup] Error:', error.message);
+    return 0;
+  }
+};
+
 module.exports = {
   // Agent storefront management
   getOrCreateStorefrontSlug,
@@ -737,5 +767,8 @@ module.exports = {
   // Admin functions
   getAllReferralOrders,
   markCommissionsPaid,
-  getWeeklyCommissionSummary
+  getWeeklyCommissionSummary,
+
+  // Maintenance
+  cleanupStalePendingReferrals
 };

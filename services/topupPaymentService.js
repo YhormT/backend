@@ -399,7 +399,10 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
 
     // Step 3: If found but already processed → already used
     if (smsMessage.isProcessed) {
-      throw new Error("This transaction ID has already been used.");
+      const processedDate = smsMessage.updatedAt || smsMessage.createdAt;
+      const formattedDate = processedDate ? new Date(processedDate).toLocaleString('en-GH', { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown date';
+      const amt = smsMessage.amount ? `GHS ${smsMessage.amount}` : '';
+      throw new Error(`This transaction ID has already been used. It was credited${amt ? ` (${amt})` : ''} on ${formattedDate}.`);
     }
 
     if (!smsMessage.amount) {
@@ -417,7 +420,9 @@ const verifyTransactionIdTopup = async (userId, referenceId, retries = 3) => {
     });
 
     if (existingTopUp) {
-      throw new Error("This transaction ID has already been used.");
+      const creditDate = existingTopUp.createdAt ? new Date(existingTopUp.createdAt).toLocaleString('en-GH', { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown date';
+      const amt = existingTopUp.amount ? `GHS ${existingTopUp.amount}` : '';
+      throw new Error(`This transaction ID has already been used. It was credited${amt ? ` (${amt})` : ''} on ${creditDate}.`);
     }
 
     // Check if user exists

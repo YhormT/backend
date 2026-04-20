@@ -170,14 +170,18 @@ const getAllTransactions = async (startDate = null, endDate = null, type = null,
       whereClause.userId = parseInt(userId, 10);
     }
 
-    // Add search filter for user name
+    // Add search filter for user name, email or phone
     if (search) {
-      whereClause.user = {
-        name: {
-          contains: search,
-          mode: 'insensitive'
-        }
-      };
+      const term = String(search).trim();
+      if (term) {
+        whereClause.user = {
+          OR: [
+            { name: { contains: term } },
+            { email: { contains: term } },
+            { phone: { contains: term } }
+          ]
+        };
+      }
     }
 
     // Add amount filter
@@ -264,14 +268,18 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
       whereClause.userId = parseInt(userId, 10);
     }
 
-    // Add search filter for user name
+    // Add search filter for user name, email or phone
     if (search) {
-      whereClause.user = {
-        name: {
-          contains: search,
-          mode: 'insensitive'
-        }
-      };
+      const term = String(search).trim();
+      if (term) {
+        whereClause.user = {
+          OR: [
+            { name: { contains: term } },
+            { email: { contains: term } },
+            { phone: { contains: term } }
+          ]
+        };
+      }
     }
 
     // Add amount filter
