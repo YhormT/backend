@@ -2,6 +2,36 @@ const prisma = require("../config/db");
 const cache = require("../utils/cache");
 
 /**
+ * Normalise a startDate/endDate pair into Prisma `{ gte, lte }` bounds.
+ *
+ * The admin UI sends plain calendar strings (YYYY-MM-DD) from <input type="date">
+ * and from the Today/Yesterday quick filters. `new Date("2026-04-21")` parses
+ * those as 2026-04-21T00:00:00.000Z — so when the user picks the *same* day
+ * for start and end the window collapses to a single instant and no rows
+ * match. Here we expand a date-only string to cover the entire day.
+ * Full ISO datetimes are left untouched so callers that pass a precise
+ * instant keep their exact bounds.
+ *
+ * @param {string|Date|null} startDate
+ * @param {string|Date|null} endDate
+ * @returns {{ gte: Date, lte: Date } | null}
+ */
+const parseDateBounds = (startDate, endDate) => {
+  if (!startDate || !endDate) return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+  const gte = new Date(startDate);
+  const lte = new Date(endDate);
+  if (typeof startDate === 'string' && dateOnly.test(startDate)) {
+    gte.setUTCHours(0, 0, 0, 0);
+  }
+  if (typeof endDate === 'string' && dateOnly.test(endDate)) {
+    lte.setUTCHours(23, 59, 59, 999);
+  }
+  if (Number.isNaN(gte.getTime()) || Number.isNaN(lte.getTime())) return null;
+  return { gte, lte };
+};
+
+/**
  * Creates a transaction record
  * @param {Number} userId - User ID
  * @param {Number} amount - Transaction amount (positive for credits, negative for debits)
@@ -96,20 +126,18 @@ const getUserTransactions = async (userId, startDate = null, endDate = null, typ
     }
 
     const whereClause = { userId };
-    
+
     // Add date filters if provided
-    if (startDate && endDate) {
-      whereClause.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
+    const userTxBounds = parseDateBounds(startDate, endDate);
+    if (userTxBounds) {
+      whereClause.createdAt = userTxBounds;
     }
-    
+
     // Add type filter if provided
     if (type) {
       whereClause.type = type;
     }
-    
+
     const result = await prisma.transaction.findMany({
       where: whereClause,
       select: {
@@ -151,15 +179,13 @@ const getUserTransactions = async (userId, startDate = null, endDate = null, typ
 const getAllTransactions = async (startDate = null, endDate = null, type = null, userId = null, page = 1, limit = 100, search = null, amountFilter = null) => {
   try {
     const whereClause = {};
-    
+
     // Add date filters if provided
-    if (startDate && endDate) {
-      whereClause.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
+    const allTxBounds = parseDateBounds(startDate, endDate);
+    if (allTxBounds) {
+      whereClause.createdAt = allTxBounds;
     }
-    
+
     // Add type filter if provided
     if (type) {
       whereClause.type = type;
@@ -249,15 +275,13 @@ const getAllTransactions = async (startDate = null, endDate = null, type = null,
 const getTransactionStatistics = async (startDate = null, endDate = null, type = null, userId = null, search = null, amountFilter = null) => {
   try {
     const whereClause = {};
-    
+
     // Add date filters if provided
-    if (startDate && endDate) {
-      whereClause.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
+    const statsBounds = parseDateBounds(startDate, endDate);
+    if (statsBounds) {
+      whereClause.createdAt = statsBounds;
     }
-    
+
     // Add type filter if provided
     if (type) {
       whereClause.type = type;
@@ -345,13 +369,9 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
 const getAdminOverviewStats = async (startDate = null, endDate = null) => {
   try {
     const where = {};
-    if (startDate && endDate) {
-      where.order = {
-        createdAt: {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        }
-      };
+    const overviewBounds = parseDateBounds(startDate, endDate);
+    if (overviewBounds) {
+      where.order = { createdAt: overviewBounds };
     }
 
     // Pull the minimal columns needed for aggregation

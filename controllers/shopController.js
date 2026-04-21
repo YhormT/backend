@@ -112,11 +112,18 @@ const getAllShopOrders = async (req, res) => {
     const where = {
       user: { email: "shop@kelishub.com" }
     };
+    // Same-day filter: expand calendar strings to cover the full day so a
+    // `startDate === endDate` selection (Today / Yesterday) does not collapse
+    // the window to a single instant and return zero rows.
     if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+      const gte = new Date(startDate);
+      const lte = new Date(endDate);
+      if (typeof startDate === 'string' && dateOnly.test(startDate)) gte.setUTCHours(0, 0, 0, 0);
+      if (typeof endDate === 'string' && dateOnly.test(endDate)) lte.setUTCHours(23, 59, 59, 999);
+      if (!Number.isNaN(gte.getTime()) && !Number.isNaN(lte.getTime())) {
+        where.createdAt = { gte, lte };
+      }
     }
 
     const orders = await prisma.order.findMany({
