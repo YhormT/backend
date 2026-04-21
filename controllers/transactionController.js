@@ -1,5 +1,21 @@
-const { getUserTransactions, getAllTransactions, getTransactionStatistics } = require('../services/transactionService');
+const { getUserTransactions, getAllTransactions, getTransactionStatistics, getAdminOverviewStats } = require('../services/transactionService');
 const prisma = require('../config/db');
+
+// Admin Overview: DB-aggregated revenue/expenses/GB/sales-by-agent/shop totals
+// so the admin dashboard never depends on a 200-row sample.
+const getAdminOverview = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const stats = await getAdminOverviewStats(startDate, endDate);
+    res.status(200).json({ success: true, data: stats });
+  } catch (error) {
+    console.error("Error in getAdminOverview:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to retrieve admin overview"
+    });
+  }
+};
 
 // Get transactions for a specific user (accessible by user and admin)
 const getUserTransactionHistory = async (req, res) => {
@@ -431,5 +447,6 @@ module.exports = {
   getAuditLog,
   getTransactionStats,
   getAdminBalanceSheetData,
-  searchTransactions
+  searchTransactions,
+  getAdminOverview
 };

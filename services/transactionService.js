@@ -327,9 +327,154 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
   }
 };
 
+/**
+ * Get admin overview stats for a date range — aggregates directly from DB
+ * so the admin dashboard Financial/Balance/Sales/Shop tabs always show the
+ * correct totals regardless of how many orders exist (no 200-row sampling).
+ *
+ * Uses the order-item snapshot price (`orderItem.productPrice`) when present
+ * so changes to the current `Product.price`/`promoPrice` do NOT retroactively
+ * mutate historical revenue or expenses figures. Falls back to the current
+ * promo-aware product price when a snapshot is missing (older rows).
+ *
+ * @param {Date|string|null} startDate
+ * @param {Date|string|null} endDate
+ * @returns {Promise<Object>} { revenue, revenueCount, expenses, expenseCount,
+ *   totalGB, shop: { total, totalAmount, totalGB }, salesByAgent: [...] }
+ */
+const getAdminOverviewStats = async (startDate = null, endDate = null) => {
+  try {
+    const where = {};
+    if (startDate && endDate) {
+      where.order = {
+        createdAt: {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        }
+      };
+    }
+
+    // Pull the minimal columns needed for aggregation
+    const items = await prisma.orderItem.findMany({
+      where,
+      select: {
+        quantity: true,
+        status: true,
+        productPrice: true,
+        productName: true,
+        productDescription: true,
+        product: {
+          select: {
+            price: true,
+            promoPrice: true,
+            usePromoPrice: true,
+            name: true,
+            description: true
+          }
+        },
+        order: {
+          select: {
+            userId: true,
+            createdAt: true,
+            user: { select: { id: true, name: true, email: true, role: true } }
+          }
+        }
+      }
+    });
+
+    let revenue = 0;
+    let revenueCount = 0;
+    let expenses = 0;
+    let expenseCount = 0;
+    let totalGB = 0;
+
+    let shopTotal = 0;
+    let shopOrdersCount = 0;
+    let shopGB = 0;
+
+    const salesByAgentMap = new Map();
+    const gbRegex = /(\d+(?:\.\d+)?)\s*GB/i;
+
+    for (const it of items) {
+      // Resolve the effective price using the snapshot first
+      const productPrice = typeof it.productPrice === 'number' ? it.productPrice : null;
+      let fallbackPrice = 0;
+      if (it.product) {
+        fallbackPrice = it.product.usePromoPrice && typeof it.product.promoPrice === 'number'
+          ? it.product.promoPrice
+          : (it.product.price || 0);
+      }
+      const effectivePrice = productPrice !== null ? productPrice : fallbackPrice;
+      const qty = it.quantity || 1;
+      const value = qty * effectivePrice;
+
+      const status = (it.status || '').toLowerCase();
+      const desc = it.productDescription || it.product?.description || '';
+      const gbMatch = desc.match(gbRegex);
+      const gbPerUnit = gbMatch ? parseFloat(gbMatch[1]) : 0;
+      const gbTotal = gbPerUnit * qty;
+
+      const userEmail = (it.order?.user?.email || '').toLowerCase();
+      const userName = (it.order?.user?.name || '').toLowerCase();
+      const isShopOrder = userEmail.startsWith('shop@') || userName === 'shop';
+
+      if (status === 'completed') {
+        revenue += value;
+        revenueCount += 1;
+
+        if (isShopOrder) {
+          shopTotal += value;
+          shopGB += gbTotal;
+          shopOrdersCount += 1;
+        } else {
+          totalGB += gbTotal;
+
+          const uid = it.order?.userId;
+          const nm = it.order?.user?.name || 'Unknown';
+          if (uid != null) {
+            const prev = salesByAgentMap.get(uid) || {
+              userId: uid,
+              name: nm,
+              role: it.order?.user?.role || '',
+              orders: 0,
+              total: 0
+            };
+            prev.orders += 1;
+            prev.total += value;
+            salesByAgentMap.set(uid, prev);
+          }
+        }
+      } else if (status === 'cancelled' || status === 'canceled' || status === 'refunded') {
+        expenses += value;
+        expenseCount += 1;
+      }
+    }
+
+    const salesByAgent = Array.from(salesByAgentMap.values()).sort((a, b) => b.total - a.total);
+
+    return {
+      revenue,
+      revenueCount,
+      expenses,
+      expenseCount,
+      totalGB,
+      shop: {
+        total: shopOrdersCount,
+        totalAmount: shopTotal,
+        totalGB: shopGB
+      },
+      salesByAgent
+    };
+  } catch (error) {
+    console.error("Error fetching admin overview stats:", error);
+    throw new Error(`Failed to retrieve admin overview stats: ${error.message}`);
+  }
+};
+
 module.exports = {
   createTransaction,
   getUserTransactions,
   getAllTransactions,
-  getTransactionStatistics
+  getTransactionStatistics,
+  getAdminOverviewStats
 };
