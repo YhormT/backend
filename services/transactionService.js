@@ -32,6 +32,25 @@ const parseDateBounds = (startDate, endDate) => {
 };
 
 /**
+ * Map a friendly network name to the set of substrings we look for in
+ * transaction descriptions / product names. Used by the admin dashboard
+ * Network filter so the stat cards (credits, debits, revenue, total GB…)
+ * reflect only the selected network.
+ *
+ * @param {string|null} network
+ * @returns {string[]} list of case-insensitive substrings (MySQL default
+ *   collation is case-insensitive so no `mode` flag is needed).
+ */
+const parseNetworkTerms = (network) => {
+  if (!network) return [];
+  const n = String(network).toUpperCase();
+  if (n === 'MTN') return ['MTN'];
+  if (n === 'AIRTELTIGO' || n === 'AIRTEL' || n === 'TIGO') return ['AIRTEL', 'TIGO'];
+  if (n === 'TELECEL' || n === 'VODAFONE') return ['TELECEL', 'VODAFONE'];
+  return [];
+};
+
+/**
  * Creates a transaction record
  * @param {Number} userId - User ID
  * @param {Number} amount - Transaction amount (positive for credits, negative for debits)
@@ -176,7 +195,7 @@ const getUserTransactions = async (userId, startDate = null, endDate = null, typ
  * @returns {Promise<Array>} All transactions
  */
 
-const getAllTransactions = async (startDate = null, endDate = null, type = null, userId = null, page = 1, limit = 100, search = null, amountFilter = null) => {
+const getAllTransactions = async (startDate = null, endDate = null, type = null, userId = null, page = 1, limit = 100, search = null, amountFilter = null, network = null) => {
   try {
     const whereClause = {};
 
@@ -196,18 +215,30 @@ const getAllTransactions = async (startDate = null, endDate = null, type = null,
       whereClause.userId = parseInt(userId, 10);
     }
 
-    // Add search filter for user name, email or phone
+    // Search + network filters are combined with AND so they can coexist with
+    // each other and with any other filter on the same where clause.
+    const andConditions = [];
     if (search) {
       const term = String(search).trim();
       if (term) {
-        whereClause.user = {
+        andConditions.push({
           OR: [
-            { name: { contains: term } },
-            { email: { contains: term } },
-            { phone: { contains: term } }
+            { description: { contains: term } },
+            { user: { is: { name: { contains: term } } } },
+            { user: { is: { email: { contains: term } } } },
+            { user: { is: { phone: { contains: term } } } }
           ]
-        };
+        });
       }
+    }
+    const networkTerms = parseNetworkTerms(network);
+    if (networkTerms.length) {
+      andConditions.push({
+        OR: networkTerms.map(t => ({ description: { contains: t } }))
+      });
+    }
+    if (andConditions.length) {
+      whereClause.AND = andConditions;
     }
 
     // Add amount filter
@@ -272,7 +303,7 @@ const getAllTransactions = async (startDate = null, endDate = null, type = null,
  * @param {String} amountFilter - Amount filter (positive/negative/all) (optional)
  * @returns {Promise<Object>} Transaction statistics
  */
-const getTransactionStatistics = async (startDate = null, endDate = null, type = null, userId = null, search = null, amountFilter = null) => {
+const getTransactionStatistics = async (startDate = null, endDate = null, type = null, userId = null, search = null, amountFilter = null, network = null) => {
   try {
     const whereClause = {};
 
@@ -292,18 +323,31 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
       whereClause.userId = parseInt(userId, 10);
     }
 
-    // Add search filter for user name, email or phone
+    // Combine search + network into an AND of OR clauses so the returned
+    // totals (credits / debits / net) reflect exactly what the user sees
+    // in the transactions table.
+    const andConditions = [];
     if (search) {
       const term = String(search).trim();
       if (term) {
-        whereClause.user = {
+        andConditions.push({
           OR: [
-            { name: { contains: term } },
-            { email: { contains: term } },
-            { phone: { contains: term } }
+            { description: { contains: term } },
+            { user: { is: { name: { contains: term } } } },
+            { user: { is: { email: { contains: term } } } },
+            { user: { is: { phone: { contains: term } } } }
           ]
-        };
+        });
       }
+    }
+    const networkTerms = parseNetworkTerms(network);
+    if (networkTerms.length) {
+      andConditions.push({
+        OR: networkTerms.map(t => ({ description: { contains: t } }))
+      });
+    }
+    if (andConditions.length) {
+      whereClause.AND = andConditions;
     }
 
     // Add amount filter
@@ -366,12 +410,45 @@ const getTransactionStatistics = async (startDate = null, endDate = null, type =
  * @returns {Promise<Object>} { revenue, revenueCount, expenses, expenseCount,
  *   totalGB, shop: { total, totalAmount, totalGB }, salesByAgent: [...] }
  */
-const getAdminOverviewStats = async (startDate = null, endDate = null) => {
+const getAdminOverviewStats = async (startDate = null, endDate = null, search = null, network = null) => {
   try {
     const where = {};
     const overviewBounds = parseDateBounds(startDate, endDate);
     if (overviewBounds) {
       where.order = { createdAt: overviewBounds };
+    }
+
+    // Search + network filters are applied against the order item snapshot
+    // fields and the underlying product, so the Revenue / Expenses / Total
+    // GB / Sales-by-agent cards all reflect the same subset the user filtered.
+    const andConditions = [];
+    const term = search ? String(search).trim() : '';
+    if (term) {
+      andConditions.push({
+        OR: [
+          { productName: { contains: term } },
+          { productDescription: { contains: term } },
+          { mobileNumber: { contains: term } },
+          { product: { is: { name: { contains: term } } } },
+          { product: { is: { description: { contains: term } } } },
+          { order: { is: { user: { is: { name: { contains: term } } } } } },
+          { order: { is: { mobileNumber: { contains: term } } } }
+        ]
+      });
+    }
+    const networkTerms = parseNetworkTerms(network);
+    if (networkTerms.length) {
+      andConditions.push({
+        OR: networkTerms.flatMap(t => [
+          { productName: { contains: t } },
+          { productDescription: { contains: t } },
+          { product: { is: { name: { contains: t } } } },
+          { product: { is: { description: { contains: t } } } }
+        ])
+      });
+    }
+    if (andConditions.length) {
+      where.AND = andConditions;
     }
 
     // Pull the minimal columns needed for aggregation
