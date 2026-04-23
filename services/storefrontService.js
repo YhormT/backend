@@ -21,6 +21,17 @@ const generateStorefrontSlug = (name) => {
   return `${base}-${random}`;
 };
 
+// Pick the promo-aware effective price for a product. Matches the logic used
+// across shopService / orderService / externalApiService / paymentController
+// so the Storefront surface (the only place that previously ignored promos)
+// now behaves consistently with the rest of the system.
+const effectivePriceOf = (product) => {
+  if (!product) return 0;
+  return (product.usePromoPrice && typeof product.promoPrice === 'number')
+    ? product.promoPrice
+    : (product.price || 0);
+};
+
 // ==================== AGENT STOREFRONT MANAGEMENT ====================
 
 // Get or create storefront slug for an agent
@@ -77,26 +88,55 @@ const getAvailableProducts = async (agentId) => {
     nameFilter = { name: { contains: ` - ${role}` } };
   }
 
-  return await prisma.product.findMany({
+  const products = await prisma.product.findMany({
     where: {
       stock: { gt: 0 },
       ...nameFilter
     },
     orderBy: [{ name: 'asc' }, { price: 'asc' }]
   });
+
+  // Expose the promo-aware price as `price` so the storefront UI (and its
+  // min-price validation) operates on what the agent actually pays. Keep
+  // the original `price` accessible as `basePrice` in case the client
+  // wants to show a strikethrough or promo badge.
+  return products.map(p => ({
+    ...p,
+    basePrice: p.price,
+    onPromo: Boolean(p.usePromoPrice && typeof p.promoPrice === 'number'),
+    price: effectivePriceOf(p)
+  }));
 };
 
 // Get agent's storefront products
 const getAgentStorefrontProducts = async (agentId) => {
-  return await prisma.storefrontProduct.findMany({
+  const rows = await prisma.storefrontProduct.findMany({
     where: { agentId: parseInt(agentId) },
     include: {
       product: {
-        select: { id: true, name: true, description: true, price: true, stock: true }
+        select: {
+          id: true, name: true, description: true, price: true,
+          promoPrice: true, usePromoPrice: true, stock: true
+        }
       }
     },
     orderBy: { createdAt: 'desc' }
   });
+
+  // Rewrite each product's `price` to the effective (promo-aware) price so
+  // the agent's "Base Price" and the "Your Profit" calculation on the UI
+  // reflect the current active price — matching how orders actually charge.
+  return rows.map(sp => ({
+    ...sp,
+    product: sp.product
+      ? {
+          ...sp.product,
+          basePrice: sp.product.price,
+          onPromo: Boolean(sp.product.usePromoPrice && typeof sp.product.promoPrice === 'number'),
+          price: effectivePriceOf(sp.product)
+        }
+      : sp.product
+  }));
 };
 
 // Add product to agent's storefront
@@ -106,9 +146,10 @@ const addProductToStorefront = async (agentId, productId, customPrice) => {
   });
 
   if (!product) throw new Error('Product not found');
-  
-  if (parseFloat(customPrice) < product.price) {
-    throw new Error(`Custom price cannot be less than base price (GHS ${product.price})`);
+
+  const basePrice = effectivePriceOf(product);
+  if (parseFloat(customPrice) < basePrice) {
+    throw new Error(`Custom price cannot be less than base price (GHS ${basePrice})`);
   }
 
   // Check if already exists
@@ -153,8 +194,9 @@ const updateStorefrontProductPrice = async (agentId, storefrontProductId, custom
 
   if (!storefrontProduct) throw new Error('Storefront product not found');
 
-  if (parseFloat(customPrice) < storefrontProduct.product.price) {
-    throw new Error(`Custom price cannot be less than base price (GHS ${storefrontProduct.product.price})`);
+  const basePrice = effectivePriceOf(storefrontProduct.product);
+  if (parseFloat(customPrice) < basePrice) {
+    throw new Error(`Custom price cannot be less than base price (GHS ${basePrice})`);
   }
 
   return await prisma.storefrontProduct.update({
@@ -263,7 +305,10 @@ const initializeReferralPayment = async (slug, storefrontProductId, customerName
   if (storefrontProduct.product.stock <= 0) throw new Error('Product out of stock');
 
   const paymentRef = generateReferralRef();
-  const basePrice = storefrontProduct.product.price;
+  // Use the promo-aware effective price so the recorded basePrice, the
+  // agent's commission, and the company revenue all line up with what
+  // every other sale channel (shop, cart, external API) is charging.
+  const basePrice = effectivePriceOf(storefrontProduct.product);
   const agentPrice = storefrontProduct.customPrice;
   const commission = agentPrice - basePrice;
 
