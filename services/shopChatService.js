@@ -81,19 +81,37 @@ class ShopChatService {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1
+        },
+        _count: {
+          select: {
+            messages: {
+              where: { senderType: 'admin', readAt: null }
+            }
+          }
         }
       }
     });
 
+    // Fetch partner names in batch
+    const adminIds = [...new Set(conversations.map(c => c.adminId))];
+    const partners = await prisma.user.findMany({
+      where: { id: { in: adminIds } },
+      select: { id: true, name: true, isLoggedIn: true }
+    });
+    const partnerMap = new Map(partners.map(p => [p.id, p]));
+
     return conversations.map(conv => {
       const lastMsg = conv.messages[0];
+      const partner = partnerMap.get(conv.adminId);
       return {
         id: conv.id,
         customerPhone: conv.customerPhone,
         adminId: conv.adminId,
+        partnerName: partner?.name || 'Support',
+        partnerOnline: !!partner?.isLoggedIn,
         lastMessageAt: conv.lastMessageAt,
         lastMessage: lastMsg ? this.decryptMessage(lastMsg) : null,
-        unreadCount: 0 // Will be calculated separately
+        unreadCount: conv._count.messages
       };
     });
   }

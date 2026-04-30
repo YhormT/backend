@@ -40,6 +40,7 @@ model User {
   storefrontProducts StorefrontProduct[] @relation("AgentStorefront")
   referralOrders     ReferralOrder[]     @relation("AgentReferrals")
   commissionPayouts  CommissionPayout[]  @relation("AgentPayouts")
+  commissionRequests CommissionRequest[] @relation("AgentCommissionRequests")
 
   @@map("User")
 }
@@ -332,6 +333,26 @@ model CommissionPayout {
   @@index([agentId], map: "CommissionPayout_agentId_idx")
   @@index([status], map: "CommissionPayout_status_idx")
   @@map("CommissionPayout")
+}
+
+// Commission Requests - Agent requests for missing order commissions
+model CommissionRequest {
+  id              Int      @id @default(autoincrement())
+  agentId         Int
+  customerPhone   String   @db.VarChar(20)
+  price           Float    // Price paid by customer
+  network         String   @db.VarChar(50) // MTN, AirtelTigo, Telecel
+  dataSize        String   @db.VarChar(50) // e.g., "5GB", "10GB"
+  status          String   @default("PENDING") @db.VarChar(20) // PENDING, APPROVED, DECLINED
+  commission      Float?   // Commission amount set by admin on approval
+  adminNotes      String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  agent           User     @relation("AgentCommissionRequests", fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId], map: "CommissionRequest_agentId_idx")
+  @@index([status], map: "CommissionRequest_status_idx")
+  @@map("CommissionRequest")
 }
 
 // Chat Conversations between admin and agents

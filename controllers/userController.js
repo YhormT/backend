@@ -389,27 +389,38 @@ const updateUserPassword = async (req, res) => {
 
 const updateUserProfile = async (req, res) => {
   const { userId } = req.params;
-  const { name, email } = req.body;
+  const { name, email, phone } = req.body;
 
   try {
-    // Validate input
-    if (!name || !email) {
-      return res.status(400).json({
+    // Ownership check: user can only update own profile (admin can update any)
+    const isAdmin = req.user?.role?.toUpperCase() === 'ADMIN';
+    if (!isAdmin && parseInt(userId) !== req.user?.id) {
+      return res.status(403).json({
         success: false,
-        message: "Name and email are required"
+        message: "You can only update your own profile"
       });
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Validate at least one field provided
+    if (!name && !email && !phone) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid email address"
+        message: "At least one field (name, email, phone) is required"
       });
     }
 
-    const updatedUser = await userService.updateProfile(parseInt(userId), { name, email });
+    // Email validation if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid email address"
+        });
+      }
+    }
+
+    const updatedUser = await userService.updateProfile(parseInt(userId), { name, email, phone });
     
     res.status(200).json({
       success: true,

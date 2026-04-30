@@ -268,7 +268,7 @@ const getPublicStorefront = async (slug) => {
   });
 
   return {
-    agent: { name: agent.name, slug: agent.storefrontSlug },
+    agent: { id: agent.id, name: agent.name, slug: agent.storefrontSlug },
     products: products.map(sp => ({
       id: sp.id,
       productId: sp.product.id,

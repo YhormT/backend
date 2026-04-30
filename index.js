@@ -24,6 +24,7 @@ const storefrontRoutes = require('./routes/storefrontRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const shopChatRoutes = require('./routes/shopChatRoutes');
 const externalApiRoutes = require('./routes/externalApiRoutes');
+const commissionRequestRoutes = require('./routes/commissionRequestRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -179,6 +180,7 @@ app.use('/api/storefront', storefrontRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/shop-chat', shopChatRoutes);
 app.use('/api/external', externalApiRoutes);
+app.use('/api/commission-requests', commissionRequestRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Kelishub Server running on port ${PORT}`));

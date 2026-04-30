@@ -489,7 +489,7 @@ const updatePassword = async (userId, newPassword) => {
 
 const updateProfile = async (userId, profileData) => {
   try {
-    const { name, email } = profileData;
+    const { name, email, phone } = profileData;
     
     // Check if email is already taken by another user
     if (email) {
@@ -509,7 +509,8 @@ const updateProfile = async (userId, profileData) => {
       where: { id: userId },
       data: {
         ...(name && { name }),
-        ...(email && { email })
+        ...(email && { email }),
+        ...(phone && { phone })
       },
     });
     
