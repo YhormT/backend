@@ -12,6 +12,7 @@ router.get('/orders/:orderId', externalApiAuth, externalApiController.getOrderSt
 router.post('/orders/status', externalApiAuth, externalApiController.getOrderStatuses);
 
 // ==================== ADMIN ENDPOINTS (JWT Auth) ====================
+router.get('/admin/agents', authMiddleware, adminMiddleware, externalApiController.getAgentsList);
 router.post('/admin/keys', authMiddleware, adminMiddleware, externalApiController.createApiKey);
 router.get('/admin/keys', authMiddleware, adminMiddleware, externalApiController.listApiKeys);
 router.patch('/admin/keys/:id/revoke', authMiddleware, adminMiddleware, externalApiController.revokeApiKey);

@@ -1,34 +1,53 @@
 const prisma = require('../config/db');
 const crypto = require('crypto');
+const { createTransaction } = require('./transactionService');
 
 // Generate a secure API key
 const generateApiKey = () => {
   return 'klh_' + crypto.randomBytes(32).toString('hex');
 };
 
-// Create a new API key for a partner
-const createApiKey = async (partnerName) => {
-  const apiKey = generateApiKey();
+// Create a new API key for an agent
+const createApiKey = async (agentId, partnerName) => {
+  // Verify agent exists
+  const agent = await prisma.user.findUnique({
+    where: { id: parseInt(agentId) },
+    select: { id: true, name: true, role: true }
+  });
+  if (!agent) throw new Error('Agent not found');
+  if (agent.role === 'admin' || agent.role === 'ADMIN') throw new Error('Cannot create API key for admin users');
 
+  const apiKey = generateApiKey();
   const record = await prisma.externalApiKey.create({
     data: {
-      partnerName,
+      partnerName: partnerName || agent.name,
+      agentId: agent.id,
       apiKey
     }
   });
 
-  return { id: record.id, partnerName: record.partnerName, apiKey: record.apiKey, createdAt: record.createdAt };
+  return { id: record.id, partnerName: record.partnerName, agentId: record.agentId, agentName: agent.name, apiKey: record.apiKey, createdAt: record.createdAt };
 };
 
 // List all API keys (mask the actual key for security)
 const listApiKeys = async () => {
   const keys = await prisma.externalApiKey.findMany({
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: 'desc' },
+    include: {
+      agent: {
+        select: { id: true, name: true, role: true, loanBalance: true, phone: true }
+      }
+    }
   });
 
   return keys.map(k => ({
     id: k.id,
     partnerName: k.partnerName,
+    agentId: k.agentId,
+    agentName: k.agent?.name || 'Unknown',
+    agentRole: k.agent?.role || '',
+    agentBalance: k.agent?.loanBalance || 0,
+    agentPhone: k.agent?.phone || '',
     apiKeyPreview: k.apiKey.substring(0, 12) + '...',
     isActive: k.isActive,
     createdAt: k.createdAt,
@@ -85,9 +104,17 @@ const getAvailableProducts = async () => {
   }));
 };
 
-// Create an external order
-const createExternalOrder = async (partnerId, items) => {
+// Create an external order - debits agent wallet
+const createExternalOrder = async (partnerId, agentId, items) => {
   return await prisma.$transaction(async (tx) => {
+    // Get agent with current balance
+    const agent = await tx.user.findUnique({
+      where: { id: agentId },
+      select: { id: true, name: true, loanBalance: true }
+    });
+
+    if (!agent) throw new Error('Agent account not found');
+
     // Validate all products exist and calculate total
     const productIds = items.map(i => parseInt(i.productId));
     const products = await tx.product.findMany({
@@ -125,27 +152,15 @@ const createExternalOrder = async (partnerId, items) => {
       });
     }
 
-    // Get or create partner user account (used to link orders in the system)
-    let partnerUser = await tx.user.findFirst({
-      where: { email: `partner_${partnerId}@external.api` }
-    });
-
-    if (!partnerUser) {
-      const partner = await tx.externalApiKey.findUnique({ where: { id: partnerId } });
-      partnerUser = await tx.user.create({
-        data: {
-          name: `[Partner] ${partner?.partnerName || 'External'}`,
-          email: `partner_${partnerId}@external.api`,
-          password: crypto.randomBytes(32).toString('hex'),
-          role: 'external_partner'
-        }
-      });
+    // Check agent wallet balance (loanBalance is their wallet)
+    if (agent.loanBalance < totalPrice) {
+      throw new Error(`Insufficient wallet balance. Required: GHS ${totalPrice.toFixed(2)}, Available: GHS ${agent.loanBalance.toFixed(2)}. Please top up your wallet.`);
     }
 
-    // Create the order
+    // Create the order under the agent's account
     const order = await tx.order.create({
       data: {
-        userId: partnerUser.id,
+        userId: agent.id,
         mobileNumber: items[0]?.mobileNumber || null,
         status: 'Pending',
         items: {
@@ -163,6 +178,17 @@ const createExternalOrder = async (partnerId, items) => {
       }
     });
 
+    // Debit agent wallet
+    const debitAmount = -totalPrice; // negative = debit
+    await createTransaction(
+      agent.id,
+      debitAmount,
+      'DEBIT',
+      `External API order #${order.id} (${orderItems.length} item${orderItems.length > 1 ? 's' : ''})`,
+      `EXT-ORD-${order.id}`,
+      tx
+    );
+
     // Increment partner's total orders count
     await tx.externalApiKey.update({
       where: { id: partnerId },
@@ -173,6 +199,7 @@ const createExternalOrder = async (partnerId, items) => {
       orderId: order.id,
       status: order.status,
       totalPrice,
+      walletBalanceAfter: agent.loanBalance - totalPrice,
       items: order.items.map(item => ({
         id: item.id,
         productId: item.productId,
@@ -248,6 +275,19 @@ const getExternalOrderStatuses = async (orderIds) => {
   }));
 };
 
+// Get list of agents for API key assignment
+const getAgentsList = async () => {
+  const agents = await prisma.user.findMany({
+    where: {
+      role: { not: 'admin' },
+      isSuspended: false
+    },
+    select: { id: true, name: true, role: true, phone: true, loanBalance: true },
+    orderBy: { name: 'asc' }
+  });
+  return agents;
+};
+
 module.exports = {
   generateApiKey,
   createApiKey,
@@ -258,5 +298,6 @@ module.exports = {
   getAvailableProducts,
   createExternalOrder,
   getExternalOrderStatus,
-  getExternalOrderStatuses
+  getExternalOrderStatuses,
+  getAgentsList
 };

@@ -35,10 +35,11 @@ const externalApiAuth = async (req, res, next) => {
       data: { lastUsedAt: new Date() }
     }).catch(() => {});
 
-    // Attach partner info to request
+    // Attach partner info to request (includes agentId for wallet operations)
     req.partner = {
       id: keyRecord.id,
-      name: keyRecord.partnerName
+      name: keyRecord.partnerName,
+      agentId: keyRecord.agentId
     };
 
     next();

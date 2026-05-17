@@ -48,7 +48,7 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    const order = await externalApiService.createExternalOrder(req.partner.id, items);
+    const order = await externalApiService.createExternalOrder(req.partner.id, req.partner.agentId, items);
 
     // Emit real-time notification to admin
     try {
@@ -108,27 +108,38 @@ exports.getOrderStatuses = async (req, res) => {
 
 // ==================== ADMIN ENDPOINTS ====================
 
-// POST /api/external/admin/keys - Generate new API key
+// POST /api/external/admin/keys - Generate new API key for an agent
 exports.createApiKey = async (req, res) => {
   try {
-    const { partnerName } = req.body;
+    const { agentId, partnerName } = req.body;
 
-    if (!partnerName || partnerName.trim().length === 0) {
+    if (!agentId) {
       return res.status(400).json({
         success: false,
-        message: 'partnerName is required'
+        message: 'agentId is required. Select an agent to generate a key for.'
       });
     }
 
-    const result = await externalApiService.createApiKey(partnerName.trim());
+    const result = await externalApiService.createApiKey(parseInt(agentId), partnerName?.trim() || '');
 
     res.status(201).json({
       success: true,
-      message: 'API key created. Share this key with your partner. It will only be shown once.',
+      message: 'API key created. Share this key with the agent. It will only be shown once.',
       data: result
     });
   } catch (error) {
     console.error('External API - createApiKey error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/external/admin/agents - List agents for API key assignment
+exports.getAgentsList = async (req, res) => {
+  try {
+    const agents = await externalApiService.getAgentsList();
+    res.json({ success: true, data: agents });
+  } catch (error) {
+    console.error('External API - getAgentsList error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
